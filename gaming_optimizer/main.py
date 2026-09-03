@@ -349,9 +349,10 @@ class App(ctk.CTk):
                 if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
                     bg_path = os.path.join(sys._MEIPASS, "bg.png")
             if os.path.exists(bg_path):
-                pil = Image.open(bg_path)
+                pil = Image.open(bg_path).convert("RGB")
+                # Cover common screen sizes with high-quality upscale
                 self._bg_img = ctk.CTkImage(light_image=pil, dark_image=pil,
-                                            size=(1600, 1200))
+                                            size=(2560, 1600))
                 self._bg_label = ctk.CTkLabel(self, image=self._bg_img, text="")
                 self._bg_label.place(x=0, y=0, relwidth=1, relheight=1)
                 self._bg_label.lower()
@@ -563,7 +564,7 @@ class App(ctk.CTk):
         # ---------- Tabs: Free / Premium ----------
         self.tabview = ctk.CTkTabview(
             self,
-            fg_color=t["BG"],
+            fg_color="transparent",
             segmented_button_fg_color="#161a1f",
             segmented_button_selected_color=t["ACCENT"],
             segmented_button_selected_hover_color=t["ACCENT_DIM"],
@@ -588,6 +589,12 @@ class App(ctk.CTk):
         # Partner tab only if this PC has partner or owner
         if is_partner():
             self.tabview.add(part_tab_name)
+        # Force each tab's inner content frame transparent so custom bg shows through
+        for tab_name in [home_tab_name, free_tab_name, prem_tab_name] + ([part_tab_name] if is_partner() else []):
+            try:
+                self.tabview.tab(tab_name).configure(fg_color="transparent")
+            except Exception:
+                pass
         self._home_tab_name = home_tab_name
         self._free_tab_name = free_tab_name
         self._prem_tab_name = prem_tab_name
