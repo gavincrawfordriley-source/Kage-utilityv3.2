@@ -42,6 +42,30 @@ Every tweak stores its original value in `%APPDATA%\GamingOptimizer\backup.json`
 
 ---
 
+## 🎨 Themes (5 built-in)
+Pick from Neon Green, Cyberpunk Pink, Arctic Blue, Solar Orange, Void Purple in **⚙ Settings → Themes**. Applied instantly, persists across launches.
+
+## 📋 Profile Presets
+Built-in presets (in **⚙ Settings → Profiles**):
+- **Competitive FPS** — 32 tweaks tuned for max input responsiveness
+- **AAA Cinematic** — 14 tweaks that keep visuals but boost GPU
+- **Streaming Setup** — 11 tweaks that balance CPU for game + OBS
+- **Minimal / Safe** — 10 gentle tweaks anyone can apply
+
+You can save your currently-applied combo as a custom profile.
+
+## 📊 Benchmark Snapshot
+**⚙ Settings → Benchmark** shows a live snapshot of every setting that matters for FPS (power plan, core parking, DVR state, HAGS, mouse accel, startup app count, etc.) with green/red indicators and an overall Optimization Score %.
+
+## 👑 Owner Console
+When you enter `2006james`, a hidden **⚙ Settings → 👑 Owner** tab appears:
+- **Rotate the secret code** at runtime without recompiling (e.g. change `FRAG42` → `FRAG2026`)
+- **Reset** to the default `FRAG42`
+- **Revoke / re-enable** premium on the current PC
+Session-only — closes when you close the app.
+
+---
+
 ## 🖥 Running from source (development)
 
 ```bat

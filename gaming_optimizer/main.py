@@ -17,27 +17,15 @@ else:
 
 from optimizations import TWEAKS, CATEGORIES, is_admin
 from licensing import (
-    submit_code, is_unlocked, is_owner_revoked, SECRET_CODE, OWNER_CODE,
+    submit_code, is_unlocked, is_owner_revoked, is_owner_session,
 )
+from settings_ui import SettingsDialog, get_theme
 
 APP_NAME = "FragBoost"
-APP_VER = "1.0"
+APP_VER = "1.1"
 
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("dark-blue")
-
-BG = "#0a0d10"
-CARD = "#141a1f"
-CARD_LOCKED = "#0f1216"
-BORDER = "#1f262d"
-ACCENT = "#7cff5a"      # neon green
-ACCENT_DIM = "#4a9c37"
-GOLD = "#ffcf5a"
-DANGER = "#ff5a7c"
-MUTED = "#6d747d"
-MUTED_LOCKED = "#3a4048"
-TEXT = "#e8ecef"
-TEXT_LOCKED = "#5a6068"
 
 CATEGORY_ICONS = {
     "CPU & Power": "\u26A1",
@@ -70,29 +58,31 @@ def relaunch_as_admin():
 # Tweak card
 # ============================================================
 class TweakCard(ctk.CTkFrame):
-    def __init__(self, master, tweak, on_change, unlocked):
+    def __init__(self, master, tweak, on_change, unlocked, theme):
         self.tweak = tweak
         self.on_change = on_change
         self.unlocked = unlocked
+        self.theme = theme
         locked_visual = tweak["locked"] and not unlocked
         self.locked_visual = locked_visual
 
         super().__init__(
             master,
-            fg_color=CARD_LOCKED if locked_visual else CARD,
+            fg_color=theme["CARD_LOCKED"] if locked_visual else theme["CARD"],
             corner_radius=12,
             border_width=1,
-            border_color=BORDER,
+            border_color=theme["BORDER"],
         )
         self._build()
         self.refresh_status()
 
     def _build(self):
+        t = self.theme
         self.grid_columnconfigure(1, weight=1)
 
-        title_color = TEXT_LOCKED if self.locked_visual else TEXT
-        desc_color = MUTED_LOCKED if self.locked_visual else MUTED
-        icon_color = MUTED_LOCKED if self.locked_visual else ACCENT
+        title_color = t["TEXT_LOCKED"] if self.locked_visual else t["TEXT"]
+        desc_color = t["MUTED_LOCKED"] if self.locked_visual else t["MUTED"]
+        icon_color = t["MUTED_LOCKED"] if self.locked_visual else t["ACCENT"]
 
         icon = ctk.CTkLabel(self, text=self.tweak["icon"],
                             font=("Segoe UI Emoji", 22),
@@ -115,19 +105,19 @@ class TweakCard(ctk.CTkFrame):
 
         self.status_dot = ctk.CTkLabel(self, text="\u25CF",
                                        font=("Segoe UI", 12),
-                                       text_color=MUTED_LOCKED if self.locked_visual else MUTED)
+                                       text_color=t["MUTED_LOCKED"] if self.locked_visual else t["MUTED"])
         self.status_dot.grid(row=0, column=2, padx=(0, 2), pady=(16, 0), sticky="e")
 
         self.status_text = ctk.CTkLabel(self, text="OFF",
                                         font=("Rajdhani", 11, "bold"),
-                                        text_color=MUTED_LOCKED if self.locked_visual else MUTED,
+                                        text_color=t["MUTED_LOCKED"] if self.locked_visual else t["MUTED"],
                                         width=32)
         self.status_text.grid(row=0, column=3, padx=(0, 10), pady=(16, 0), sticky="e")
 
         self.switch = ctk.CTkSwitch(
             self, text="", command=self._toggle,
-            progress_color=GOLD if self.tweak["locked"] else ACCENT,
-            button_color=TEXT, button_hover_color=ACCENT,
+            progress_color=t["GOLD"] if self.tweak["locked"] else t["ACCENT"],
+            button_color=t["TEXT"], button_hover_color=t["ACCENT"],
             fg_color="#242a33", width=44,
         )
         self.switch.grid(row=1, column=2, columnspan=2,
@@ -137,9 +127,10 @@ class TweakCard(ctk.CTkFrame):
             self.switch.configure(state="disabled")
 
     def refresh_status(self):
+        t = self.theme
         if self.locked_visual:
-            self.status_dot.configure(text_color=MUTED_LOCKED)
-            self.status_text.configure(text="LOCKED", text_color=MUTED_LOCKED)
+            self.status_dot.configure(text_color=t["MUTED_LOCKED"])
+            self.status_text.configure(text="LOCKED", text_color=t["MUTED_LOCKED"])
             return
         try:
             state = self.tweak["status"]()
@@ -148,13 +139,13 @@ class TweakCard(ctk.CTkFrame):
         applied = state == "on"
         if applied:
             self.switch.select()
-            color = GOLD if self.tweak["locked"] else ACCENT
+            color = t["GOLD"] if self.tweak["locked"] else t["ACCENT"]
             self.status_dot.configure(text_color=color)
             self.status_text.configure(text="ON", text_color=color)
         else:
             self.switch.deselect()
-            self.status_dot.configure(text_color=MUTED)
-            self.status_text.configure(text="OFF", text_color=MUTED)
+            self.status_dot.configure(text_color=t["MUTED"])
+            self.status_text.configure(text="OFF", text_color=t["MUTED"])
 
     def _toggle(self):
         if self.locked_visual:
@@ -166,52 +157,54 @@ class TweakCard(ctk.CTkFrame):
 # Unlock dialog
 # ============================================================
 class UnlockDialog(ctk.CTkToplevel):
-    def __init__(self, master, on_result):
+    def __init__(self, master, theme, on_result):
         super().__init__(master)
+        self.theme = theme
         self.on_result = on_result
         self.title("Enter Code")
-        self.geometry("440x280")
+        self.geometry("440x290")
         self.resizable(False, False)
-        self.configure(fg_color=BG)
+        self.configure(fg_color=theme["BG"])
         self.transient(master)
         self.grab_set()
 
         ctk.CTkLabel(self, text="\U0001F512  ENTER UNLOCK CODE",
                      font=("Rajdhani", 20, "bold"),
-                     text_color=GOLD).pack(pady=(28, 4))
+                     text_color=theme["GOLD"]).pack(pady=(28, 4))
 
         ctk.CTkLabel(self,
                      text="Premium code unlocks all 53 tweaks on this PC.",
-                     font=("Inter", 11), text_color=MUTED).pack(pady=(0, 20))
+                     font=("Inter", 11), text_color=theme["MUTED"]).pack(pady=(0, 20))
 
         self.entry = ctk.CTkEntry(self, width=280, height=44,
                                   font=("JetBrains Mono", 16),
-                                  justify="center",
-                                  placeholder_text="FRAG42",
-                                  fg_color=CARD, border_color=BORDER)
+                                  justify="center", show="",
+                                  placeholder_text="XXXXXX",
+                                  fg_color=theme["CARD"], border_color=theme["BORDER"])
         self.entry.pack(pady=(0, 6))
         self.entry.focus_set()
         self.entry.bind("<Return>", lambda e: self._submit())
 
         self.msg = ctk.CTkLabel(self, text="", font=("Inter", 11),
-                                text_color=MUTED, wraplength=380)
+                                text_color=theme["MUTED"], wraplength=380)
         self.msg.pack(pady=(6, 10))
 
-        btns = ctk.CTkFrame(self, fg_color=BG)
+        btns = ctk.CTkFrame(self, fg_color=theme["BG"])
         btns.pack(pady=(4, 20))
         ctk.CTkButton(btns, text="Cancel", command=self.destroy,
                       fg_color="#242a33", hover_color="#2f3742",
-                      text_color=TEXT, width=110, height=36,
+                      text_color=theme["TEXT"], width=110, height=36,
                       font=("Rajdhani", 13, "bold")).pack(side="left", padx=6)
         ctk.CTkButton(btns, text="SUBMIT", command=self._submit,
-                      fg_color=GOLD, hover_color="#dbaf3e",
+                      fg_color=theme["GOLD"], hover_color="#dbaf3e",
                       text_color="#141005", width=110, height=36,
                       font=("Rajdhani", 13, "bold")).pack(side="left", padx=6)
 
     def _submit(self):
         level, message = submit_code(self.entry.get())
-        color = ACCENT if level in ("unlock", "owner_unlock", "already") else (
-            GOLD if level == "owner_revoke" else DANGER
+        t = self.theme
+        color = t["ACCENT"] if level in ("unlock", "owner_unlock", "already") else (
+            t["GOLD"] if level == "owner_revoke" else t["DANGER"]
         )
         self.msg.configure(text=message, text_color=color)
         if level in ("unlock", "owner_unlock", "owner_revoke"):
@@ -224,10 +217,11 @@ class UnlockDialog(ctk.CTkToplevel):
 class App(ctk.CTk):
     def __init__(self):
         super().__init__()
+        self.theme_name, self.theme = get_theme()
         self.title(f"{APP_NAME} \u2014 Gaming Optimizer")
-        self.geometry("960x820")
+        self.geometry("980x840")
         self.minsize(880, 700)
-        self.configure(fg_color=BG)
+        self.configure(fg_color=self.theme["BG"])
         self.cards = []
         self._build_ui()
         self._check_platform()
@@ -236,47 +230,48 @@ class App(ctk.CTk):
         return is_unlocked()
 
     def _build_ui(self):
+        t = self.theme
         # ---------- Header ----------
-        header = ctk.CTkFrame(self, fg_color=BG, height=90)
+        header = ctk.CTkFrame(self, fg_color=t["BG"], height=90)
         header.pack(fill="x", padx=28, pady=(22, 6))
         header.grid_columnconfigure(1, weight=1)
 
         ctk.CTkLabel(header, text="\u25B2",
                      font=("Segoe UI", 40, "bold"),
-                     text_color=ACCENT).grid(row=0, column=0, rowspan=2,
-                                             padx=(0, 12), sticky="w")
+                     text_color=t["ACCENT"]).grid(row=0, column=0, rowspan=2,
+                                                  padx=(0, 12), sticky="w")
 
         ctk.CTkLabel(header, text=APP_NAME,
                      font=("Rajdhani", 32, "bold"),
-                     text_color=TEXT, anchor="w").grid(row=0, column=1, sticky="sw")
+                     text_color=t["TEXT"], anchor="w").grid(row=0, column=1, sticky="sw")
 
         ctk.CTkLabel(header,
                      text="53 Windows 11 gaming tweaks \u2014 fully reversible.",
-                     font=("Inter", 11), text_color=MUTED,
+                     font=("Inter", 11), text_color=t["MUTED"],
                      anchor="w").grid(row=1, column=1, sticky="nw")
 
         # Badges (right)
-        badges = ctk.CTkFrame(header, fg_color=BG)
+        badges = ctk.CTkFrame(header, fg_color=t["BG"])
         badges.grid(row=0, column=2, rowspan=2, sticky="e")
 
         if self._unlocked():
             self.premium_badge = ctk.CTkLabel(
                 badges, text="\u2605 PREMIUM",
                 font=("Rajdhani", 12, "bold"),
-                text_color=GOLD, fg_color="#211a08", corner_radius=8,
+                text_color=t["GOLD"], fg_color="#211a08", corner_radius=8,
                 width=100, height=26,
             )
         else:
             self.premium_badge = ctk.CTkLabel(
                 badges, text="FREE",
                 font=("Rajdhani", 12, "bold"),
-                text_color=MUTED, fg_color="#161a1f", corner_radius=8,
+                text_color=t["MUTED"], fg_color="#161a1f", corner_radius=8,
                 width=100, height=26,
             )
         self.premium_badge.pack(side="right", padx=(4, 0))
 
         admin_txt = "\u2713 ADMIN" if is_admin() else "\u26A0 NO ADMIN"
-        admin_color = ACCENT if is_admin() else DANGER
+        admin_color = t["ACCENT"] if is_admin() else t["DANGER"]
         self.admin_badge = ctk.CTkLabel(
             badges, text=admin_txt, font=("Rajdhani", 12, "bold"),
             text_color=admin_color, fg_color="#141a1f", corner_radius=8,
@@ -284,60 +279,76 @@ class App(ctk.CTk):
         )
         self.admin_badge.pack(side="right", padx=(4, 4))
 
+        if is_owner_session():
+            self.owner_badge = ctk.CTkLabel(
+                badges, text="\U0001F451 OWNER",
+                font=("Rajdhani", 12, "bold"),
+                text_color=t["GOLD"], fg_color="#211a08", corner_radius=8,
+                width=90, height=26,
+            )
+            self.owner_badge.pack(side="right", padx=(4, 4))
+
         # ---------- Action bar ----------
-        actions = ctk.CTkFrame(self, fg_color=BG)
+        actions = ctk.CTkFrame(self, fg_color=t["BG"])
         actions.pack(fill="x", padx=28, pady=(6, 10))
 
         ctk.CTkButton(
             actions, text="\u26A1  APPLY ALL",
             command=self.apply_all,
-            fg_color=ACCENT, hover_color=ACCENT_DIM, text_color="#0a0f0a",
-            font=("Rajdhani", 14, "bold"), height=40, corner_radius=10, width=160,
+            fg_color=t["ACCENT"], hover_color=t["ACCENT_DIM"], text_color="#0a0f0a",
+            font=("Rajdhani", 14, "bold"), height=40, corner_radius=10, width=150,
         ).pack(side="left")
 
         ctk.CTkButton(
             actions, text="\u21BA  RESTORE ALL",
             command=self.restore_all,
-            fg_color="#242a33", hover_color="#2f3742", text_color=TEXT,
-            font=("Rajdhani", 14, "bold"), height=40, corner_radius=10, width=160,
+            fg_color="#242a33", hover_color="#2f3742", text_color=t["TEXT"],
+            font=("Rajdhani", 14, "bold"), height=40, corner_radius=10, width=150,
         ).pack(side="left", padx=(8, 0))
 
-        # Unlock button (visible until unlocked)
         if not self._unlocked():
             self.btn_unlock = ctk.CTkButton(
                 actions, text="\U0001F512  ENTER CODE",
                 command=self._open_unlock,
-                fg_color=GOLD, hover_color="#dbaf3e", text_color="#141005",
-                font=("Rajdhani", 14, "bold"), height=40, corner_radius=10, width=160,
+                fg_color=t["GOLD"], hover_color="#dbaf3e", text_color="#141005",
+                font=("Rajdhani", 14, "bold"), height=40, corner_radius=10, width=150,
             )
             self.btn_unlock.pack(side="left", padx=(8, 0))
         else:
             self.btn_unlock = ctk.CTkButton(
                 actions, text="\U0001F511  MANAGE CODE",
                 command=self._open_unlock,
-                fg_color="#242a33", hover_color="#2f3742", text_color=GOLD,
-                font=("Rajdhani", 13, "bold"), height=40, corner_radius=10, width=160,
+                fg_color="#242a33", hover_color="#2f3742", text_color=t["GOLD"],
+                font=("Rajdhani", 13, "bold"), height=40, corner_radius=10, width=150,
             )
             self.btn_unlock.pack(side="left", padx=(8, 0))
+
+        # Settings gear
+        ctk.CTkButton(
+            actions, text="\u2699  SETTINGS",
+            command=self._open_settings,
+            fg_color="#242a33", hover_color="#2f3742", text_color=t["TEXT"],
+            font=("Rajdhani", 13, "bold"), height=40, corner_radius=10, width=140,
+        ).pack(side="left", padx=(8, 0))
 
         if not is_admin():
             ctk.CTkButton(
                 actions, text="\U0001F510  RUN AS ADMIN",
                 command=relaunch_as_admin,
-                fg_color=DANGER, hover_color="#c44660", text_color="#150507",
+                fg_color=t["DANGER"], hover_color="#c44660", text_color="#150507",
                 font=("Rajdhani", 13, "bold"), height=40, corner_radius=10, width=160,
             ).pack(side="right")
 
         # ---------- Scroll body ----------
-        self.scroll = ctk.CTkScrollableFrame(self, fg_color=BG, corner_radius=0)
+        self.scroll = ctk.CTkScrollableFrame(self, fg_color=t["BG"], corner_radius=0)
         self.scroll.pack(fill="both", expand=True, padx=22, pady=(2, 4))
 
         self._render_cards()
 
         # ---------- Status bar ----------
-        self.status_bar = ctk.CTkLabel(self, text="Ready.",
+        self.status_bar = ctk.CTkLabel(self, text=f"Ready.  Theme: {self.theme_name}",
                                        font=("Inter", 11),
-                                       text_color=MUTED, anchor="w")
+                                       text_color=t["MUTED"], anchor="w")
         self.status_bar.pack(fill="x", padx=32, pady=(0, 12))
 
     def _render_cards(self):
@@ -345,40 +356,39 @@ class App(ctk.CTk):
             w.destroy()
         self.cards = []
         unlocked = self._unlocked()
+        t = self.theme
 
-        # group by category, preserve CATEGORIES order
         by_cat = {}
-        for t in TWEAKS:
-            by_cat.setdefault(t["category"], []).append(t)
+        for tw in TWEAKS:
+            by_cat.setdefault(tw["category"], []).append(tw)
 
         for cat in CATEGORIES:
             items = by_cat.get(cat, [])
             if not items:
                 continue
 
-            # Category header
-            header = ctk.CTkFrame(self.scroll, fg_color=BG, height=36)
+            header = ctk.CTkFrame(self.scroll, fg_color=t["BG"], height=36)
             header.pack(fill="x", pady=(14, 4), padx=6)
             cat_locked = items[0]["locked"] and not unlocked
-            cat_color = GOLD if items[0]["locked"] else ACCENT
+            cat_color = t["GOLD"] if items[0]["locked"] else t["ACCENT"]
             icon = CATEGORY_ICONS.get(cat, "\u25CF")
             lock_marker = "  \U0001F512" if cat_locked else ("  \u2605" if items[0]["locked"] else "")
             ctk.CTkLabel(
                 header,
                 text=f"{icon}   {cat.upper()}{lock_marker}",
                 font=("Rajdhani", 15, "bold"),
-                text_color=cat_color if not cat_locked else MUTED_LOCKED,
+                text_color=cat_color if not cat_locked else t["MUTED_LOCKED"],
                 anchor="w",
             ).pack(side="left")
 
             ctk.CTkLabel(
                 header, text=f"{len(items)} tweaks",
                 font=("Inter", 10),
-                text_color=MUTED, anchor="e",
+                text_color=t["MUTED"], anchor="e",
             ).pack(side="right", padx=(0, 4))
 
-            for t in items:
-                card = TweakCard(self.scroll, t, self.on_toggle, unlocked)
+            for tw in items:
+                card = TweakCard(self.scroll, tw, self.on_toggle, unlocked, t)
                 card.pack(fill="x", padx=6, pady=4)
                 self.cards.append(card)
 
@@ -387,26 +397,71 @@ class App(ctk.CTk):
             messagebox.showwarning(
                 "Not Windows",
                 "FragBoost is designed for Windows 11. On other platforms "
-                "the tweaks will silently fail — nothing will be harmed."
+                "the tweaks will silently fail \u2014 nothing will be harmed."
             )
         if is_owner_revoked():
             self.set_status(
                 "\U0001F451  Owner has revoked premium on this PC. Enter owner code to restore.",
-                DANGER,
+                self.theme["DANGER"],
             )
 
-    def set_status(self, msg, color=MUTED):
+    def set_status(self, msg, color=None):
+        if color is None:
+            color = self.theme["MUTED"]
         self.status_bar.configure(text=msg, text_color=color)
 
     def _open_unlock(self):
-        UnlockDialog(self, on_result=self._on_unlock_result)
+        UnlockDialog(self, self.theme, on_result=self._rebuild)
 
-    def _on_unlock_result(self):
-        # Rebuild UI to reflect new unlock state
+    def _open_settings(self):
+        SettingsDialog(
+            self, self.theme,
+            on_theme_change=self._on_theme_change,
+            on_profile_apply=self._apply_profile_ids,
+        )
+
+    def _on_theme_change(self, name):
+        self.theme_name = name
+        from settings_ui import get_theme as gt
+        _, self.theme = gt()
+        self.configure(fg_color=self.theme["BG"])
+        self._rebuild()
+
+    def _rebuild(self):
         for w in self.winfo_children():
             w.destroy()
         self.cards = []
         self._build_ui()
+
+    def _apply_profile_ids(self, tweak_ids):
+        unlocked = self._unlocked()
+
+        def worker():
+            applied = skipped = failed = 0
+            for tid in tweak_ids:
+                tw = next((x for x in TWEAKS if x["id"] == tid), None)
+                if not tw:
+                    continue
+                if tw["locked"] and not unlocked:
+                    skipped += 1
+                    continue
+                if tw.get("requires_admin") and not is_admin():
+                    skipped += 1
+                    continue
+                self.set_status(f"Applying: {tw['title']}\u2026", self.theme["ACCENT"])
+                try:
+                    tw["apply"]()
+                    applied += 1
+                except Exception:
+                    failed += 1
+            for card in self.cards:
+                card.refresh_status()
+            self.set_status(
+                f"\u2713 Profile applied: {applied} on, {skipped} skipped, {failed} failed.",
+                self.theme["ACCENT"],
+            )
+
+        threading.Thread(target=worker, daemon=True).start()
 
     def on_toggle(self, tweak, wants_on, card):
         if tweak.get("requires_admin") and not is_admin():
@@ -419,20 +474,24 @@ class App(ctk.CTk):
             return
 
         def worker():
-            self.set_status(f"Working: {tweak['title']}\u2026", ACCENT)
+            self.set_status(f"Working: {tweak['title']}\u2026", self.theme["ACCENT"])
             try:
                 if wants_on:
                     result = tweak["apply"]()
                     if tweak["id"] == "clean_temp" and isinstance(result, int):
                         mb = result / (1024 * 1024)
-                        self.set_status(f"\u2713 Cleaned {mb:.1f} MB of temp files.", ACCENT)
+                        self.set_status(f"\u2713 Cleaned {mb:.1f} MB of temp files.",
+                                        self.theme["ACCENT"])
                     else:
-                        self.set_status(f"\u2713 Applied: {tweak['title']}", ACCENT)
+                        self.set_status(f"\u2713 Applied: {tweak['title']}",
+                                        self.theme["ACCENT"])
                 else:
                     tweak["restore"]()
-                    self.set_status(f"\u21BA Restored: {tweak['title']}", MUTED)
+                    self.set_status(f"\u21BA Restored: {tweak['title']}",
+                                    self.theme["MUTED"])
             except Exception as e:
-                self.set_status(f"\u2717 Error on '{tweak['title']}': {e}", DANGER)
+                self.set_status(f"\u2717 Error on '{tweak['title']}': {e}",
+                                self.theme["DANGER"])
             finally:
                 card.refresh_status()
 
@@ -455,18 +514,19 @@ class App(ctk.CTk):
 
         def worker():
             for card in eligible:
-                t = card.tweak
-                if t.get("requires_admin") and not is_admin():
-                    self.set_status(f"Skipping (needs admin): {t['title']}", DANGER)
+                tw = card.tweak
+                if tw.get("requires_admin") and not is_admin():
+                    self.set_status(f"Skipping (needs admin): {tw['title']}",
+                                    self.theme["DANGER"])
                     continue
-                self.set_status(f"Applying: {t['title']}\u2026", ACCENT)
+                self.set_status(f"Applying: {tw['title']}\u2026", self.theme["ACCENT"])
                 try:
-                    t["apply"]()
+                    tw["apply"]()
                 except Exception as e:
-                    self.set_status(f"\u2717 {t['title']}: {e}", DANGER)
+                    self.set_status(f"\u2717 {tw['title']}: {e}", self.theme["DANGER"])
                 card.refresh_status()
             self.set_status(
-                "\u2713 Done. Reboot recommended for full effect.", ACCENT
+                "\u2713 Done. Reboot recommended for full effect.", self.theme["ACCENT"]
             )
 
         threading.Thread(target=worker, daemon=True).start()
@@ -482,14 +542,14 @@ class App(ctk.CTk):
             for card in self.cards:
                 if card.locked_visual:
                     continue
-                t = card.tweak
-                self.set_status(f"Restoring: {t['title']}\u2026", MUTED)
+                tw = card.tweak
+                self.set_status(f"Restoring: {tw['title']}\u2026", self.theme["MUTED"])
                 try:
-                    t["restore"]()
+                    tw["restore"]()
                 except Exception as e:
-                    self.set_status(f"\u2717 {t['title']}: {e}", DANGER)
+                    self.set_status(f"\u2717 {tw['title']}: {e}", self.theme["DANGER"])
                 card.refresh_status()
-            self.set_status("\u21BA All settings restored.", MUTED)
+            self.set_status("\u21BA All settings restored.", self.theme["MUTED"])
 
         threading.Thread(target=worker, daemon=True).start()
 
