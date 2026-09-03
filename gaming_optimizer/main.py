@@ -31,7 +31,7 @@ from voice import play_intro
 import startup as autostart
 
 APP_NAME = "Kage Utility"
-APP_VER = "1.3"
+APP_VER = "1.5"
 
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("dark-blue")

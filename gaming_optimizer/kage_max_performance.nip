@@ -48,4 +48,100 @@
       </ProfileSetting>
     </Settings>
   </Profile>
+  <Profile>
+    <ProfileName>Fortnite</ProfileName>
+    <Executeables>
+      <string>FortniteClient-Win64-Shipping.exe</string>
+      <string>FortniteLauncher.exe</string>
+      <string>FortniteClient-Win64-Shipping_BE.exe</string>
+      <string>FortniteClient-Win64-Shipping_EAC.exe</string>
+      <string>FortniteClient-Win64-Shipping_EAC_EOS.exe</string>
+    </Executeables>
+    <Settings>
+      <ProfileSetting>
+        <SettingNameInfo>Power management mode - Prefer maximum performance</SettingNameInfo>
+        <SettingID>274197361</SettingID>
+        <SettingValue>1</SettingValue>
+        <ValueType>Dword</ValueType>
+      </ProfileSetting>
+      <ProfileSetting>
+        <SettingNameInfo>Threaded optimization - On</SettingNameInfo>
+        <SettingID>2007064165</SettingID>
+        <SettingValue>1</SettingValue>
+        <ValueType>Dword</ValueType>
+      </ProfileSetting>
+      <ProfileSetting>
+        <SettingNameInfo>Vertical Sync - Off</SettingNameInfo>
+        <SettingID>11041231</SettingID>
+        <SettingValue>1381559588</SettingValue>
+        <ValueType>Dword</ValueType>
+      </ProfileSetting>
+      <ProfileSetting>
+        <SettingNameInfo>Texture filtering - Quality - High Performance</SettingNameInfo>
+        <SettingID>203818574</SettingID>
+        <SettingValue>1</SettingValue>
+        <ValueType>Dword</ValueType>
+      </ProfileSetting>
+      <ProfileSetting>
+        <SettingNameInfo>Texture filtering - Anisotropic sample optimization - On</SettingNameInfo>
+        <SettingID>1027103181</SettingID>
+        <SettingValue>1</SettingValue>
+        <ValueType>Dword</ValueType>
+      </ProfileSetting>
+      <ProfileSetting>
+        <SettingNameInfo>Texture filtering - Negative LOD bias - Allow</SettingNameInfo>
+        <SettingID>3494946</SettingID>
+        <SettingValue>1</SettingValue>
+        <ValueType>Dword</ValueType>
+      </ProfileSetting>
+      <ProfileSetting>
+        <SettingNameInfo>Texture filtering - Trilinear optimization - On</SettingNameInfo>
+        <SettingID>3066610928</SettingID>
+        <SettingValue>1</SettingValue>
+        <ValueType>Dword</ValueType>
+      </ProfileSetting>
+      <ProfileSetting>
+        <SettingNameInfo>Low Latency Mode - Ultra</SettingNameInfo>
+        <SettingID>10756197</SettingID>
+        <SettingValue>2</SettingValue>
+        <ValueType>Dword</ValueType>
+      </ProfileSetting>
+      <ProfileSetting>
+        <SettingNameInfo>Shader Cache Size - Unlimited</SettingNameInfo>
+        <SettingID>2334036831</SettingID>
+        <SettingValue>4294967295</SettingValue>
+        <ValueType>Dword</ValueType>
+      </ProfileSetting>
+      <ProfileSetting>
+        <SettingNameInfo>Preferred refresh rate - Highest available</SettingNameInfo>
+        <SettingID>8471526</SettingID>
+        <SettingValue>1</SettingValue>
+        <ValueType>Dword</ValueType>
+      </ProfileSetting>
+      <ProfileSetting>
+        <SettingNameInfo>Anisotropic filtering setting - Off</SettingNameInfo>
+        <SettingID>101</SettingID>
+        <SettingValue>0</SettingValue>
+        <ValueType>Dword</ValueType>
+      </ProfileSetting>
+      <ProfileSetting>
+        <SettingNameInfo>Antialiasing - FXAA - Off</SettingNameInfo>
+        <SettingID>1630748931</SettingID>
+        <SettingValue>0</SettingValue>
+        <ValueType>Dword</ValueType>
+      </ProfileSetting>
+      <ProfileSetting>
+        <SettingNameInfo>Antialiasing - Gamma correction - Off</SettingNameInfo>
+        <SettingID>1913097550</SettingID>
+        <SettingValue>0</SettingValue>
+        <ValueType>Dword</ValueType>
+      </ProfileSetting>
+      <ProfileSetting>
+        <SettingNameInfo>Antialiasing - Mode - Application-controlled</SettingNameInfo>
+        <SettingID>1092083743</SettingID>
+        <SettingValue>0</SettingValue>
+        <ValueType>Dword</ValueType>
+      </ProfileSetting>
+    </Settings>
+  </Profile>
 </ArrayOfProfile>

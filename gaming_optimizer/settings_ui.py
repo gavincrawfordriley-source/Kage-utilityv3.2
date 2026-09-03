@@ -61,6 +61,7 @@ class SettingsDialog(ctk.CTkToplevel):
         tabs.add("\U0001F4CB Profiles")
         tabs.add("\U0001F4CA Benchmark")
         tabs.add("\u2699 System")
+        tabs.add("\U0001F504 Update")
         # Customize tab: owner + partner only
         if licensing.is_owner_session() or licensing.is_partner():
             tabs.add("\U0001F3A8 Customize")
@@ -72,6 +73,7 @@ class SettingsDialog(ctk.CTkToplevel):
         self._build_profiles(tabs.tab("\U0001F4CB Profiles"))
         self._build_benchmark(tabs.tab("\U0001F4CA Benchmark"))
         self._build_system(tabs.tab("\u2699 System"))
+        self._build_update(tabs.tab("\U0001F504 Update"))
         if licensing.is_owner_session() or licensing.is_partner():
             self._build_customize(tabs.tab("\U0001F3A8 Customize"))
         if licensing.is_owner_session():
@@ -438,6 +440,217 @@ class SettingsDialog(ctk.CTkToplevel):
                 text_color=self.theme["DANGER"],
             )
 
+    # ---------- Update ----------
+    def _build_update(self, parent):
+        import updater
+        t = self.theme
+        ctk.CTkLabel(
+            parent, text="\U0001F504  Update Kage Utility",
+            font=("Rajdhani", 20, "bold"),
+            text_color=t["TEXT"],
+        ).pack(anchor="w", pady=(8, 4))
+        ctk.CTkLabel(
+            parent,
+            text=f"Current version:  v{updater.APP_VERSION}",
+            font=("JetBrains Mono", 12),
+            text_color=t["MUTED"],
+        ).pack(anchor="w", pady=(0, 14))
+
+        self._update_status = ctk.CTkLabel(
+            parent, text="Click 'CHECK FOR UPDATES' to see if a newer version exists on GitHub.",
+            font=("Inter", 11), text_color=t["MUTED"],
+            wraplength=640, justify="left",
+        )
+        self._update_status.pack(anchor="w", pady=(0, 10))
+
+        self._update_progress = ctk.CTkProgressBar(
+            parent, height=8, corner_radius=4,
+            progress_color=t["ACCENT"], fg_color=t["BORDER"],
+        )
+        self._update_progress.set(0)
+        self._update_progress.pack(fill="x", padx=4, pady=(0, 14))
+
+        bar = ctk.CTkFrame(parent, fg_color=t["BG"])
+        bar.pack(anchor="w")
+
+        self._update_check_btn = ctk.CTkButton(
+            bar, text="\U0001F50D  CHECK FOR UPDATES",
+            command=self._update_check,
+            fg_color=t["ACCENT"], hover_color=t["ACCENT_DIM"], text_color="#0a0f0a",
+            font=("Rajdhani", 13, "bold"), width=200, height=34, corner_radius=8,
+        )
+        self._update_check_btn.pack(side="left", padx=(0, 8))
+
+        self._update_install_btn = ctk.CTkButton(
+            bar, text="\u26A1  DOWNLOAD & INSTALL",
+            command=self._update_install,
+            fg_color=t["GOLD"], hover_color="#dbaf3e", text_color="#141005",
+            font=("Rajdhani", 13, "bold"), width=210, height=34, corner_radius=8,
+            state="disabled",
+        )
+        self._update_install_btn.pack(side="left", padx=(0, 8))
+
+        self._update_source_btn = ctk.CTkButton(
+            bar, text="\U0001F4E5  DOWNLOAD SOURCE",
+            command=self._update_source,
+            fg_color="#242a33", hover_color="#2f3742", text_color=t["TEXT"],
+            font=("Rajdhani", 12, "bold"), width=200, height=34, corner_radius=8,
+        )
+        self._update_source_btn.pack(side="left")
+
+        self._pending_update_info = None
+
+        ctk.CTkLabel(
+            parent,
+            text="\u2139  Auto-install works when you're running the compiled KageUtility.exe "
+                 "and a maintainer has uploaded KageUtility.exe as a GitHub Release asset.\n"
+                 "Otherwise use 'DOWNLOAD SOURCE' to grab the latest code ZIP and run build.bat.",
+            font=("Inter", 10), text_color=t["MUTED"],
+            wraplength=680, justify="left",
+        ).pack(anchor="w", pady=(18, 0))
+
+    def _update_check(self):
+        import updater, threading
+        self._update_status.configure(
+            text="Checking GitHub for the latest release\u2026",
+            text_color=self.theme["MUTED"],
+        )
+        self._update_check_btn.configure(state="disabled")
+
+        def worker():
+            info = updater._fetch_latest_release()
+            commit = updater._fetch_latest_commit() if not info else None
+            self.after(0, lambda: self._update_check_done(info, commit))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _update_check_done(self, info, commit):
+        import updater
+        self._update_check_btn.configure(state="normal")
+        if info:
+            local, remote = updater.APP_VERSION, info["version"]
+            if updater._is_newer(remote, local):
+                self._pending_update_info = info
+                msg = (
+                    f"\u2605  New version available: v{remote}  (you have v{local}).\n\n"
+                    f"{info.get('notes', '') or 'Click DOWNLOAD & INSTALL to update.'}"
+                )
+                self._update_status.configure(text=msg, text_color=self.theme["GOLD"])
+                if info.get("exe_asset_url"):
+                    self._update_install_btn.configure(state="normal")
+                else:
+                    self._update_status.configure(
+                        text=msg + "\n\n\u26A0  No .exe asset in this release. Use 'DOWNLOAD SOURCE' instead.",
+                        text_color=self.theme["GOLD"],
+                    )
+            else:
+                self._update_status.configure(
+                    text=f"\u2713  You're on the latest release (v{local}).",
+                    text_color=self.theme["ACCENT"],
+                )
+        elif commit:
+            self._update_status.configure(
+                text=(
+                    "No releases published yet, but there IS a live main branch on GitHub.\n"
+                    f"Latest commit: {commit['sha']}  \u2014  {commit['message']}\n\n"
+                    "Click DOWNLOAD SOURCE to grab it and run build.bat."
+                ),
+                text_color=self.theme["MUTED"],
+            )
+        else:
+            self._update_status.configure(
+                text=(
+                    "\u2717  Couldn't reach GitHub.\n\n"
+                    "Common cause: your repo is PRIVATE. GitHub API returns 404 for private repos "
+                    "without a login token. Two options:\n\n"
+                    "1) Make the repo PUBLIC (Settings \u2192 General \u2192 Change visibility)\n"
+                    "2) Keep it private and share ZIP downloads manually\n\n"
+                    "Also check your internet connection."
+                ),
+                text_color=self.theme["DANGER"],
+            )
+
+    def _update_install(self):
+        import updater, threading
+        info = self._pending_update_info
+        if not info or not info.get("exe_asset_url"):
+            return
+        if not messagebox.askyesno(
+            "Install update",
+            f"Download v{info['version']} and restart Kage Utility?\n\n"
+            "The app will close and relaunch on the new version."
+        ):
+            return
+        self._update_install_btn.configure(state="disabled")
+        self._update_check_btn.configure(state="disabled")
+        self._update_source_btn.configure(state="disabled")
+        self._update_status.configure(
+            text=f"Downloading v{info['version']}\u2026",
+            text_color=self.theme["ACCENT"],
+        )
+
+        def progress(pct):
+            self.after(0, lambda: self._update_progress.set(pct))
+
+        def worker():
+            ok, msg = updater.install_new_exe(info["exe_asset_url"], progress_cb=progress)
+            self.after(0, lambda: self._install_done(ok, msg))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _install_done(self, ok, msg):
+        self._update_status.configure(
+            text=msg,
+            text_color=self.theme["ACCENT"] if ok else self.theme["DANGER"],
+        )
+        if ok:
+            # Give the message a moment to be read, then close the app so the .bat can swap
+            self.after(2000, self._quit_for_update)
+        else:
+            self._update_check_btn.configure(state="normal")
+            self._update_source_btn.configure(state="normal")
+
+    def _quit_for_update(self):
+        try:
+            self.master.destroy()
+        except Exception:
+            import sys
+            sys.exit(0)
+
+    def _update_source(self):
+        import updater, threading
+        self._update_source_btn.configure(state="disabled")
+        self._update_status.configure(
+            text="Downloading latest source ZIP from main branch\u2026",
+            text_color=self.theme["ACCENT"],
+        )
+
+        def progress(pct):
+            self.after(0, lambda: self._update_progress.set(pct))
+
+        def worker():
+            ok, result = updater.download_source_zip(progress_cb=progress)
+            self.after(0, lambda: self._source_done(ok, result))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _source_done(self, ok, result):
+        self._update_source_btn.configure(state="normal")
+        if ok:
+            self._update_status.configure(
+                text=(
+                    f"\u2713  Latest source extracted to:\n{result}\n\n"
+                    "Explorer just opened there. Run build.bat inside, then use the new "
+                    "dist\\KageUtility.exe. You can close and delete this old one after."
+                ),
+                text_color=self.theme["ACCENT"],
+            )
+        else:
+            self._update_status.configure(
+                text=f"\u2717  {result}",
+                text_color=self.theme["DANGER"],
+            )
+
     # ---------- Owner Console ----------
     def _build_owner(self, parent):
         # Use a scrollable frame — content is now bigger with owner-code rotation
@@ -629,66 +842,127 @@ class SettingsDialog(ctk.CTkToplevel):
         # Distinct cyan/teal accent for partner branding
         PARTNER_COLOR = "#2dd4bf"
 
+        scroll = ctk.CTkScrollableFrame(parent, fg_color=t["BG"], corner_radius=0)
+        scroll.pack(fill="both", expand=True)
+
         ctk.CTkLabel(
-            parent, text="\U0001F91D  Partnership Panel",
+            scroll, text="\U0001F91D  Partnership Panel",
             font=("Rajdhani", 20, "bold"),
             text_color=PARTNER_COLOR,
         ).pack(anchor="w", pady=(8, 4))
         ctk.CTkLabel(
-            parent,
-            text="Generate a rotatable code to grant partners access to the Partner tab "
-                 "and exclusive tweaks. Old codes stop working after a rotation.",
+            scroll,
+            text="Owners only. Generate a fresh random code for EACH partner \u2014 rotate before "
+                 "the next invite so each code is effectively single-use. Partners cannot see this panel.",
             font=("Inter", 11), text_color=t["MUTED"],
             wraplength=640, justify="left",
         ).pack(anchor="w", pady=(0, 20))
 
-        current = licensing.get_partner_code()
-        ctk.CTkLabel(
-            parent, text=f"Current partner code:  {current}",
-            font=("JetBrains Mono", 13),
-            text_color=PARTNER_COLOR,
-        ).pack(anchor="w", pady=(0, 20))
+        # ===== Current active code (big display + copy) =====
+        code_card = ctk.CTkFrame(scroll, fg_color=t["CARD"], corner_radius=12,
+                                 border_width=1, border_color=PARTNER_COLOR)
+        code_card.pack(fill="x", padx=4, pady=(0, 14))
 
         ctk.CTkLabel(
-            parent, text="New partner code",
+            code_card, text="ACTIVE PARTNER INVITE CODE",
+            font=("Rajdhani", 11, "bold"),
+            text_color=t["MUTED"],
+        ).pack(anchor="w", padx=16, pady=(14, 2))
+
+        current = licensing.get_partner_code()
+        self._partner_current_lbl = ctk.CTkLabel(
+            code_card, text=current,
+            font=("JetBrains Mono", 22, "bold"),
+            text_color=PARTNER_COLOR,
+        )
+        self._partner_current_lbl.pack(anchor="w", padx=16, pady=(0, 6))
+
+        row = ctk.CTkFrame(code_card, fg_color=t["CARD"])
+        row.pack(anchor="w", padx=16, pady=(0, 14))
+        ctk.CTkButton(
+            row, text="\U0001F4CB  COPY", command=self._copy_partner,
+            fg_color=PARTNER_COLOR, hover_color="#14b8a6", text_color="#053b32",
+            font=("Rajdhani", 12, "bold"), width=110, height=30, corner_radius=6,
+        ).pack(side="left", padx=(0, 8))
+        ctk.CTkButton(
+            row, text="\U0001F3B2  GENERATE RANDOM", command=self._generate_random_partner,
+            fg_color="#242a33", hover_color="#2f3742", text_color=PARTNER_COLOR,
+            font=("Rajdhani", 12, "bold"), width=180, height=30, corner_radius=6,
+        ).pack(side="left")
+
+        # ===== Manual rotate + reset =====
+        ctk.CTkLabel(
+            scroll, text="Or enter a custom code",
             font=("Rajdhani", 12, "bold"),
             text_color=t["TEXT"],
-        ).pack(anchor="w")
+        ).pack(anchor="w", padx=4, pady=(6, 4))
 
         self.new_partner_entry = ctk.CTkEntry(
-            parent, width=320, height=38,
+            scroll, width=320, height=38,
             font=("JetBrains Mono", 14), justify="center",
             placeholder_text="e.g. KAGE-ALPHA-2026",
             fg_color=t["CARD"], border_color=t["BORDER"],
         )
-        self.new_partner_entry.pack(anchor="w", pady=(4, 6))
+        self.new_partner_entry.pack(anchor="w", padx=4, pady=(0, 6))
 
         self.partner_msg = ctk.CTkLabel(
-            parent, text="", font=("Inter", 11),
-            text_color=t["MUTED"],
+            scroll, text="", font=("Inter", 11),
+            text_color=t["MUTED"], wraplength=640, justify="left",
         )
-        self.partner_msg.pack(anchor="w", pady=(0, 10))
+        self.partner_msg.pack(anchor="w", padx=4, pady=(0, 10))
 
-        bar = ctk.CTkFrame(parent, fg_color=t["BG"])
-        bar.pack(anchor="w")
+        bar = ctk.CTkFrame(scroll, fg_color=t["BG"])
+        bar.pack(anchor="w", padx=4)
 
         ctk.CTkButton(
-            bar, text="ROTATE PARTNER CODE", command=self._rotate_partner,
+            bar, text="ROTATE (SET AS ACTIVE)", command=self._rotate_partner,
             fg_color=PARTNER_COLOR, hover_color="#14b8a6", text_color="#053b32",
-            font=("Rajdhani", 13, "bold"), width=200, height=34, corner_radius=8,
+            font=("Rajdhani", 12, "bold"), width=200, height=34, corner_radius=8,
         ).pack(side="left", padx=(0, 8))
-
         ctk.CTkButton(
             bar, text="RESET TO DEFAULT", command=self._reset_partner,
             fg_color="#242a33", hover_color="#2f3742", text_color=t["TEXT"],
             font=("Rajdhani", 12, "bold"), width=160, height=34, corner_radius=8,
         ).pack(side="left")
 
+    def _copy_partner(self):
+        try:
+            self.clipboard_clear()
+            self.clipboard_append(licensing.get_partner_code())
+            self.partner_msg.configure(
+                text="\u2713 Copied to clipboard. Share with your partner, then rotate before the next invite.",
+                text_color=self.theme["ACCENT"],
+            )
+        except Exception:
+            pass
+
+    def _generate_random_partner(self):
+        import secrets, string
+        alphabet = string.ascii_uppercase + string.digits
+        # Skip visually confusing chars
+        alphabet = alphabet.replace("O", "").replace("0", "").replace("I", "").replace("1", "")
+        code = "KAGE-" + "".join(secrets.choice(alphabet) for _ in range(8))
+        if licensing.rotate_partner_code(code):
+            self._partner_current_lbl.configure(text=code)
+            self.new_partner_entry.delete(0, "end")
+            self.new_partner_entry.insert(0, code)
+            self.partner_msg.configure(
+                text=f"\u2713 New random code generated. Click COPY, then send to your partner. "
+                     "Rotate again before inviting anyone else.",
+                text_color=self.theme["ACCENT"],
+            )
+        else:
+            self.partner_msg.configure(
+                text="\u2717 Failed to generate. Try again.",
+                text_color=self.theme["DANGER"],
+            )
+
     def _rotate_partner(self):
         new = self.new_partner_entry.get().strip()
         if licensing.rotate_partner_code(new):
+            self._partner_current_lbl.configure(text=new)
             self.partner_msg.configure(
-                text=f"\u2713 Partner code rotated to '{new}'. Give it to your partners.",
+                text=f"\u2713 Partner code rotated to '{new}'. Old code no longer works.",
                 text_color=self.theme["ACCENT"],
             )
         else:
@@ -699,8 +973,9 @@ class SettingsDialog(ctk.CTkToplevel):
 
     def _reset_partner(self):
         licensing.reset_partner_code()
+        self._partner_current_lbl.configure(text=licensing.get_partner_code())
         self.partner_msg.configure(
-            text="\u21BA Partner code reset to default (KAGE-PARTNER).",
+            text="\u21BA Partner code reset to default (KAGE-PARTNER). Rotate before sharing.",
             text_color=self.theme["MUTED"],
         )
 
