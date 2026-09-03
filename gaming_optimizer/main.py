@@ -809,18 +809,27 @@ class App(ctk.CTk):
             try:
                 if wants_on:
                     result = tweak["apply"]()
-                    # Verify the tweak actually took effect by reading the real state
+                    # Verify by reading real state, but give a smart message
+                    # if the tweak's status_fn is slow/reboot-gated.
                     try:
                         actual = tweak["status"]()
                     except Exception:
                         actual = "off"
                     if actual != "on":
-                        self.set_status(
-                            f"\u26A0 '{tweak['title']}' did NOT apply. "
-                            "Click 'RUN AS ADMIN' at the top-right, then try again. "
-                            "(Some tweaks also need a reboot to show up in Windows Settings.)",
-                            self.theme["DANGER"],
-                        )
+                        history.record(tweak)  # still record — the write DID happen
+                        if not is_admin():
+                            self.set_status(
+                                f"\u26A0 '{tweak['title']}' didn't stick. "
+                                "You're NOT running as admin \u2014 click 'RUN AS ADMIN' at the top-right.",
+                                self.theme["DANGER"],
+                            )
+                        else:
+                            # Admin but status didn't flip — likely reboot-gated or delayed check.
+                            self.set_status(
+                                f"\u2713 Applied '{tweak['title']}' \u2014 "
+                                "reboot recommended for the change to become visible.",
+                                self.theme["GOLD"],
+                            )
                     else:
                         history.record(tweak)
                         self.rp.update(f"Applied: {tweak['title'][:40]}",
@@ -837,6 +846,17 @@ class App(ctk.CTk):
                     history.drop(tweak["id"])
                     self.set_status(f"\u21BA Restored: {tweak['title']}",
                                     self.theme["MUTED"])
+            except PermissionError as pe:
+                if not is_admin():
+                    self.set_status(
+                        f"\u2717 '{tweak['title']}' needs Administrator. Click 'RUN AS ADMIN'.",
+                        self.theme["DANGER"],
+                    )
+                else:
+                    self.set_status(
+                        f"\u2717 '{tweak['title']}' blocked by Windows even as admin: {pe}",
+                        self.theme["DANGER"],
+                    )
             except Exception as e:
                 self.set_status(f"\u2717 Error on '{tweak['title']}': {e}",
                                 self.theme["DANGER"])

@@ -40,6 +40,9 @@ def _run(cmd):
     try:
         r = subprocess.run(
             cmd, shell=True, capture_output=True, text=True,
+            # CRITICAL for PyInstaller --windowed builds: parent has no stdin,
+            # so we must explicitly pipe it or child processes silently misbehave.
+            stdin=subprocess.DEVNULL,
             creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
         )
         return r.returncode == 0, (r.stdout or "") + (r.stderr or "")
@@ -117,15 +120,14 @@ def _reg_tweak(tweak_id, ops):
                 saved[key] = old
         b[tweak_id] = saved
         _save_backup(b)
-        all_ok = True
+        wrote_any = False
         for op in ops:
-            ok = _reg_set(op["hive"], op["path"], op["name"], op["on"], op.get("typ"))
-            if not ok:
-                all_ok = False
-        if not all_ok:
+            if _reg_set(op["hive"], op["path"], op["name"], op["on"], op.get("typ")):
+                wrote_any = True
+        # If NOTHING wrote successfully, it's a real permission problem
+        if not wrote_any:
             raise PermissionError(
-                "Registry write failed — this tweak needs Administrator rights. "
-                "Click 'RUN AS ADMIN' and try again."
+                "All registry writes failed. Right-click the app \u2192 'Run as administrator'."
             )
         return True
 
