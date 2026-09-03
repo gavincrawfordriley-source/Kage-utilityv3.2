@@ -9,7 +9,7 @@ import threading
 import urllib.request
 from packaging.version import Version, InvalidVersion
 
-APP_VERSION = "1.2"
+APP_VERSION = "1.3"
 
 # Point this at your repo when you publish:
 # e.g. "https://api.github.com/repos/jamesjames/kage-utility/releases/latest"

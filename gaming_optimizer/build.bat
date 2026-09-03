@@ -1,7 +1,6 @@
 @echo off
 REM =====================================================
 REM  Kage Utility — one-click build script
-REM  Produces a single .exe with custom icon.
 REM =====================================================
 
 echo.
@@ -30,12 +29,14 @@ python -m PyInstaller ^
   --uac-admin ^
   --add-data "icon.ico;." ^
   --add-data "icon.png;." ^
+  --add-data "splash_source.png;." ^
   --collect-all customtkinter ^
+  --hidden-import pystray._win32 ^
+  --hidden-import pypresence ^
   main.py
 
 echo.
 echo =====================================================
 echo   Done!  Your executable is at:  dist\KageUtility.exe
-echo   Send that single file to your friend.
 echo =====================================================
 pause

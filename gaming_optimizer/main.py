@@ -22,9 +22,12 @@ from licensing import (
 from settings_ui import SettingsDialog, get_theme
 import history
 import updater
+from splash import Splash
+from tray import TrayController
+from discord_rp import RichPresence
 
 APP_NAME = "Kage Utility"
-APP_VER = "1.2"
+APP_VER = "1.3"
 
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("dark-blue")
@@ -234,10 +237,17 @@ class App(ctk.CTk):
         self.minsize(880, 700)
         self.configure(fg_color=self.theme["BG"])
         self.cards = []
+        self.tray = TrayController(self)
+        self.rp = RichPresence()
         self._build_ui()
         self._check_platform()
         # Async update check
         updater.check_async(self._on_update_available)
+        # Start tray + Discord in background
+        self.tray.start()
+        self.rp.connect_async()
+        # Hide close = minimize to tray (if tray available)
+        self.protocol("WM_DELETE_WINDOW", self._on_close)
 
     def _unlocked(self):
         return is_unlocked()
@@ -415,6 +425,21 @@ class App(ctk.CTk):
                 card.pack(fill="x", padx=6, pady=4)
                 self.cards.append(card)
 
+    def _on_close(self):
+        """Hide to tray if available, otherwise quit."""
+        if self.tray.available:
+            try:
+                self.withdraw()
+                self.tray.notify("Kage Utility", "Still running \u2014 tray icon in the system tray.")
+            except Exception:
+                self.destroy()
+        else:
+            try:
+                self.rp.close()
+            except Exception:
+                pass
+            self.destroy()
+
     def _refresh_undo_state(self):
         if hasattr(self, "btn_undo"):
             if history.has_undo():
@@ -552,6 +577,8 @@ class App(ctk.CTk):
                 if wants_on:
                     result = tweak["apply"]()
                     history.record(tweak)
+                    self.rp.update(f"Applied: {tweak['title'][:40]}",
+                                   "Optimizing with Kage")
                     if tweak["id"] == "clean_temp" and isinstance(result, int):
                         mb = result / (1024 * 1024)
                         self.set_status(f"\u2713 Cleaned {mb:.1f} MB of temp files.",
@@ -635,7 +662,22 @@ class App(ctk.CTk):
 
 
 def main():
-    App().mainloop()
+    # Bootstrap: create a hidden root, show splash, then reveal the app.
+    root = ctk.CTk()
+    root.withdraw()  # hide the root while splash is up
+
+    app_holder = {"app": None}
+
+    def build_app():
+        try:
+            root.destroy()
+        except Exception:
+            pass
+        app_holder["app"] = App()
+        app_holder["app"].mainloop()
+
+    Splash.show(root, on_done=build_app)
+    root.mainloop()
 
 
 if __name__ == "__main__":
