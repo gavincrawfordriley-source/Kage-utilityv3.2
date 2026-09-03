@@ -9,10 +9,17 @@ python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
 
 echo.
-echo [2/4] Generating custom app icon and background...
+echo [2/4] Generating custom app icon, background, and audio...
 python generate_icon.py
 python generate_bg.py
 python -c "from sound import ensure_sfx; ensure_sfx()"
+python -c "from voice import ensure_voice; ensure_voice()"
+if not exist voice.wav copy /Y whoosh.wav voice.wav >nul
+if not exist voice.wav (
+  echo WARNING: voice.wav could not be generated. Aborting build.
+  pause
+  exit /b 1
+)
 
 echo.
 echo [3/4] Cleaning old build...
@@ -39,6 +46,15 @@ python -m PyInstaller ^
   --hidden-import pystray._win32 ^
   --hidden-import pypresence ^
   main.py
+
+if not exist dist\KageUtility.exe (
+  echo.
+  echo =====================================================
+  echo   BUILD FAILED. Scroll up to see the PyInstaller error.
+  echo =====================================================
+  pause
+  exit /b 1
+)
 
 echo.
 echo =====================================================

@@ -36,7 +36,14 @@ def _synthesize():
 
 def ensure_voice():
     if not os.path.exists(VOICE_PATH):
-        _synthesize()
+        ok = _synthesize()
+        # Fallback: if TTS unavailable, copy whoosh so voice.wav always exists
+        if not ok and os.path.exists(WHOOSH_PATH):
+            try:
+                import shutil
+                shutil.copyfile(WHOOSH_PATH, VOICE_PATH)
+            except Exception:
+                pass
 
 
 def play_intro():
