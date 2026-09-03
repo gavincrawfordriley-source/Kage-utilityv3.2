@@ -163,6 +163,72 @@ class TweakCard(ctk.CTkFrame):
 
 
 # ============================================================
+# Partner Welcome Modal — shown once when someone enters partner code
+# ============================================================
+class PartnerWelcome(ctk.CTkToplevel):
+    PARTNER_COLOR = "#2dd4bf"
+    PARTNER_BG = "#0d2a26"
+
+    def __init__(self, master, theme):
+        super().__init__(master)
+        self.theme = theme
+        self.title("Welcome, Partner")
+        self.geometry("520x360")
+        self.resizable(False, False)
+        self.configure(fg_color=self.PARTNER_BG)
+        self.transient(master)
+        self.grab_set()
+
+        # Big handshake icon
+        ctk.CTkLabel(
+            self, text="\U0001F91D",
+            font=("Segoe UI Emoji", 64),
+            text_color=self.PARTNER_COLOR,
+        ).pack(pady=(30, 8))
+
+        # Heading
+        ctk.CTkLabel(
+            self, text="Welcome to the Kage Family",
+            font=("Rajdhani", 22, "bold"),
+            text_color=self.PARTNER_COLOR,
+        ).pack(pady=(0, 4))
+
+        # Body — the exact message
+        body = (
+            "Thank you for joining us.\n"
+            "We are looking forward to working with you.\n\n"
+            "\u2014 Scary & Peachy"
+        )
+        ctk.CTkLabel(
+            self, text=body,
+            font=("Inter", 12),
+            text_color=theme["TEXT"], justify="center",
+        ).pack(pady=(0, 18))
+
+        # Perks summary
+        perks_frame = ctk.CTkFrame(self, fg_color=self.PARTNER_BG)
+        perks_frame.pack(pady=(0, 8))
+        for line in [
+            "\u2605  Full Premium access",
+            "\U0001F91D  Partner-exclusive tweaks",
+            "\U0001F3A8  Custom background wallpapers",
+        ]:
+            ctk.CTkLabel(
+                perks_frame, text=line,
+                font=("Rajdhani", 12, "bold"),
+                text_color=self.PARTNER_COLOR,
+            ).pack(anchor="w", pady=1)
+
+        # Close button
+        ctk.CTkButton(
+            self, text="LET'S GO",
+            command=self.destroy,
+            fg_color=self.PARTNER_COLOR, hover_color="#14b8a6", text_color="#053b32",
+            font=("Rajdhani", 14, "bold"), width=180, height=38, corner_radius=10,
+        ).pack(pady=(12, 20))
+
+
+# ============================================================
 # Unlock dialog
 # ============================================================
 class UnlockDialog(ctk.CTkToplevel):
@@ -222,7 +288,24 @@ class UnlockDialog(ctk.CTkToplevel):
             color = t["DANGER"]
         self.msg.configure(text=message, text_color=color)
         if level in ("unlock", "owner_unlock", "partner_unlock"):
-            self.after(1100, lambda: (self.on_result(), self.destroy()))
+            # Store level so on_result can show the partner welcome popup
+            self._final_level = level
+            self.after(1100, self._finalize)
+
+    def _finalize(self):
+        # Trigger main window rebuild first, then show welcome popup for partners
+        try:
+            self.on_result()
+        finally:
+            level = getattr(self, "_final_level", None)
+            self.destroy()
+            if level == "partner_unlock":
+                # Show welcome on next tick so parent has finished rebuilding
+                try:
+                    root = self.master
+                    root.after(200, lambda: PartnerWelcome(root, self.theme))
+                except Exception:
+                    pass
 
 
 # ============================================================
@@ -294,8 +377,8 @@ class App(ctk.CTk):
     def _build_ui(self):
         t = self.theme
         # ---------- Header ----------
-        header = ctk.CTkFrame(self, fg_color=t["BG"], height=90)
-        header.pack(fill="x", padx=28, pady=(22, 6))
+        header = ctk.CTkFrame(self, fg_color="transparent", height=90)
+        header.pack(fill="x", padx=16, pady=(10, 4))
         header.grid_columnconfigure(1, weight=1)
 
         ctk.CTkLabel(header, text="\u25B2",
@@ -365,7 +448,7 @@ class App(ctk.CTk):
             warn = ctk.CTkFrame(self, fg_color="#3d1520",
                                 corner_radius=10, border_width=1,
                                 border_color=t["DANGER"])
-            warn.pack(fill="x", padx=28, pady=(4, 6))
+            warn.pack(fill="x", padx=16, pady=(2, 4))
             warn.grid_columnconfigure(1, weight=1)
             ctk.CTkLabel(warn, text="\u26A0",
                          font=("Segoe UI Emoji", 22),
@@ -385,8 +468,8 @@ class App(ctk.CTk):
             ).grid(row=1, column=1, sticky="w", pady=(0, 10))
 
         # ---------- Action bar ----------
-        actions = ctk.CTkFrame(self, fg_color=t["BG"])
-        actions.pack(fill="x", padx=28, pady=(6, 10))
+        actions = ctk.CTkFrame(self, fg_color="transparent")
+        actions.pack(fill="x", padx=16, pady=(4, 6))
 
         ctk.CTkButton(
             actions, text="\u26A1  APPLY ALL",
@@ -457,7 +540,7 @@ class App(ctk.CTk):
         info = ctk.CTkFrame(self, fg_color="#0f1a24",
                             corner_radius=10, border_width=1,
                             border_color=t["ACCENT_DIM"])
-        info.pack(fill="x", padx=28, pady=(4, 6))
+        info.pack(fill="x", padx=16, pady=(2, 4))
         info.grid_columnconfigure(1, weight=1)
         ctk.CTkLabel(info, text="\u2139",
                      font=("Segoe UI Emoji", 18),
@@ -489,7 +572,7 @@ class App(ctk.CTk):
             text_color=t["TEXT"],
             corner_radius=10,
         )
-        self.tabview.pack(fill="both", expand=True, padx=22, pady=(2, 4))
+        self.tabview.pack(fill="both", expand=True, padx=12, pady=(2, 4))
 
         # Add tabs with clear labels
         free_count = sum(1 for tw in TWEAKS if not tw["locked"])
@@ -507,21 +590,21 @@ class App(ctk.CTk):
         self._prem_tab_name = prem_tab_name
         self._part_tab_name = part_tab_name
 
-        # Scrollable frames inside each tab
+        # Scrollable frames inside each tab — TRANSPARENT so custom backgrounds show through
         self.scroll_free = ctk.CTkScrollableFrame(
-            self.tabview.tab(free_tab_name), fg_color=t["BG"], corner_radius=0
+            self.tabview.tab(free_tab_name), fg_color="transparent", corner_radius=0
         )
         self.scroll_free.pack(fill="both", expand=True)
 
         self.scroll_prem = ctk.CTkScrollableFrame(
-            self.tabview.tab(prem_tab_name), fg_color=t["BG"], corner_radius=0
+            self.tabview.tab(prem_tab_name), fg_color="transparent", corner_radius=0
         )
         self.scroll_prem.pack(fill="both", expand=True)
 
         self.scroll_part = None
         if is_partner():
             self.scroll_part = ctk.CTkScrollableFrame(
-                self.tabview.tab(part_tab_name), fg_color=t["BG"], corner_radius=0
+                self.tabview.tab(part_tab_name), fg_color="transparent", corner_radius=0
             )
             self.scroll_part.pack(fill="both", expand=True)
 
@@ -531,7 +614,7 @@ class App(ctk.CTk):
         self.status_bar = ctk.CTkLabel(self, text=f"Ready.  Theme: {self.theme_name}",
                                        font=("Inter", 11),
                                        text_color=t["MUTED"], anchor="w")
-        self.status_bar.pack(fill="x", padx=32, pady=(0, 12))
+        self.status_bar.pack(fill="x", padx=20, pady=(0, 6))
 
     def _render_cards(self):
         for w in self.scroll_free.winfo_children():
@@ -809,36 +892,43 @@ class App(ctk.CTk):
             try:
                 if wants_on:
                     result = tweak["apply"]()
-                    # Verify by reading real state, but give a smart message
-                    # if the tweak's status_fn is slow/reboot-gated.
-                    try:
-                        actual = tweak["status"]()
-                    except Exception:
-                        actual = "off"
-                    if actual != "on":
-                        history.record(tweak)  # still record — the write DID happen
-                        if not is_admin():
-                            self.set_status(
-                                f"\u26A0 '{tweak['title']}' didn't stick. "
-                                "You're NOT running as admin \u2014 click 'RUN AS ADMIN' at the top-right.",
-                                self.theme["DANGER"],
-                            )
-                        else:
-                            # Admin but status didn't flip — likely reboot-gated or delayed check.
-                            self.set_status(
-                                f"\u2713 Applied '{tweak['title']}' \u2014 "
-                                "reboot recommended for the change to become visible.",
-                                self.theme["GOLD"],
-                            )
-                    else:
-                        history.record(tweak)
-                        self.rp.update(f"Applied: {tweak['title'][:40]}",
-                                       "Optimizing with Kage")
+                    # One-shot actions (clean temp, flush DNS) don't have a "stays on" state,
+                    # so we skip the verify step entirely.
+                    is_action = tweak.get("action", False)
+                    if is_action:
+                        # Special result reporting for clean_temp (returns MB)
                         if tweak["id"] == "clean_temp" and isinstance(result, int):
                             mb = result / (1024 * 1024)
                             self.set_status(f"\u2713 Cleaned {mb:.1f} MB of temp files.",
                                             self.theme["ACCENT"])
                         else:
+                            self.set_status(f"\u2713 Ran: {tweak['title']}",
+                                            self.theme["ACCENT"])
+                        history.record(tweak)
+                    else:
+                        # Persistent state — verify by reading real state
+                        try:
+                            actual = tweak["status"]()
+                        except Exception:
+                            actual = "off"
+                        if actual != "on":
+                            history.record(tweak)
+                            if not is_admin():
+                                self.set_status(
+                                    f"\u26A0 '{tweak['title']}' didn't stick. "
+                                    "You're NOT running as admin \u2014 click 'RUN AS ADMIN' at the top-right.",
+                                    self.theme["DANGER"],
+                                )
+                            else:
+                                self.set_status(
+                                    f"\u2713 Applied '{tweak['title']}' \u2014 "
+                                    "reboot recommended for the change to become visible.",
+                                    self.theme["GOLD"],
+                                )
+                        else:
+                            history.record(tweak)
+                            self.rp.update(f"Applied: {tweak['title'][:40]}",
+                                           "Optimizing with Kage")
                             self.set_status(f"\u2713 Applied: {tweak['title']}  (reboot may be needed for full effect)",
                                             self.theme["ACCENT"])
                 else:
@@ -943,7 +1033,13 @@ def main():
         app_holder["app"].mainloop()
 
     Splash.show(root, on_done=build_app)
-    play_intro()  # falls back to whoosh if pyttsx3 unavailable
+    # Startup sound is OPT-IN via Settings → System → "Startup sound"
+    try:
+        from settings_ui import load_settings
+        if load_settings().get("startup_sound", False):
+            play_intro()
+    except Exception:
+        pass
     root.mainloop()
 
 

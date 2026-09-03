@@ -435,11 +435,13 @@ PARTNER = "partner"  # partner-exclusive tier
 _defs = []
 
 
-def _add(tid, title, desc, icon, category, locked, apply, restore, status, admin=True, partner_only=False):
+def _add(tid, title, desc, icon, category, locked, apply, restore, status, admin=True, partner_only=False, action=False):
+    """action=True marks one-shot tweaks (clean temp, flush DNS) that never stay 'on'."""
     _defs.append({
         "id": tid, "title": title, "desc": desc, "icon": icon,
         "category": category, "locked": locked, "requires_admin": admin,
         "partner_only": partner_only,
+        "action": action,
         "tier": "partner" if partner_only else ("premium" if locked else "free"),
         "apply": apply, "restore": restore, "status": status,
     })
@@ -687,15 +689,15 @@ _add_reg("bg_apps", "Disable Background Apps",
 _add("clean_temp", "Clean Temp Files",
      "Wipes %TEMP%, Windows\\Temp and Prefetch. Reports MB freed.",
      "\U0001F9F9", "Disk", FREE,
-     _temp_apply, lambda: True, lambda: "off")
+     _temp_apply, lambda: True, lambda: "off", action=True)
 
 _add("clean_wu", "Clear Windows Update Cache",
      "Deletes stale downloads under SoftwareDistribution\\Download.",
-     "\u267B", "Disk", FREE, _wuc_apply, lambda: True, lambda: "off")
+     "\u267B", "Disk", FREE, _wuc_apply, lambda: True, lambda: "off", action=True)
 
 _add("clean_dns", "Flush DNS Cache",
      "Clears the local DNS resolver cache — fixes stale lookups instantly.",
-     "\U0001F310", "Disk", FREE, _dns_flush, lambda: True, lambda: "off")
+     "\U0001F310", "Disk", FREE, _dns_flush, lambda: True, lambda: "off", action=True)
 
 _add("hibernation", "Disable Hibernation",
      "Removes hiberfil.sys — frees several GB on your C: drive.",
@@ -800,6 +802,43 @@ _add_reg("partner_win_prio", "Foreground Boost x6",
      "\U0001F525", "Partner Exclusive", LOCKED,
      [{"hive": "HKLM", "path": r"SYSTEM\CurrentControlSet\Control\PriorityControl", "name": "Win32PrioritySeparation", "on": 0x26}],
      partner_only=True)
+
+# ---------- NVIDIA driver-level tweaks (partner-only) ----------
+_add_reg("nv_powermizer_max", "NVIDIA PowerMizer Maximum Performance",
+     "Locks the NVIDIA GPU into maximum performance mode at the driver level.",
+     "\u26A1", "Partner Exclusive", LOCKED,
+     [{"hive": "HKLM", "path": r"SYSTEM\CurrentControlSet\Services\nvlddmkm", "name": "PowerMizerEnable", "on": 1},
+      {"hive": "HKLM", "path": r"SYSTEM\CurrentControlSet\Services\nvlddmkm", "name": "PowerMizerLevel", "on": 1},
+      {"hive": "HKLM", "path": r"SYSTEM\CurrentControlSet\Services\nvlddmkm", "name": "PowerMizerLevelAC", "on": 1},
+      {"hive": "HKLM", "path": r"SYSTEM\CurrentControlSet\Services\nvlddmkm", "name": "PerfLevelSrc", "on": 0x2222}],
+     partner_only=True)
+
+_add_reg("nv_hags_force", "NVIDIA Force Hardware GPU Scheduling",
+     "Turns on Windows Hardware-Accelerated GPU Scheduling for NVIDIA cards.",
+     "\U0001F3AE", "Partner Exclusive", LOCKED,
+     [{"hive": "HKLM", "path": r"SYSTEM\CurrentControlSet\Control\GraphicsDrivers", "name": "HwSchMode", "on": 2}],
+     partner_only=True)
+
+_add_reg("nv_telemetry_off", "Disable NVIDIA Telemetry",
+     "Blocks NVIDIA container telemetry uploads for lower background CPU usage.",
+     "\U0001F576", "Partner Exclusive", LOCKED,
+     [{"hive": "HKLM", "path": r"SOFTWARE\NVIDIA Corporation\NvContainer\Telemetry", "name": "SendTelemetryData", "on": 0},
+      {"hive": "HKLM", "path": r"SOFTWARE\NVIDIA Corporation\NvContainer\Telemetry", "name": "OptInOrOutPreference", "on": 0}],
+     partner_only=True)
+
+_add_reg("nv_shader_cache_uncap", "NVIDIA Uncap Shader Cache",
+     "Removes the 4GB shader cache size limit — fewer stutters in modern shader-heavy games.",
+     "\U0001F4BE", "Partner Exclusive", LOCKED,
+     [{"hive": "HKLM", "path": r"SYSTEM\CurrentControlSet\Services\nvlddmkm\Global\NVTweak", "name": "DisableShaderCache", "on": 0},
+      {"hive": "HKLM", "path": r"SYSTEM\CurrentControlSet\Services\nvlddmkm\Global\NVTweak", "name": "ShaderCacheSizeInMB", "on": 0xFFFFFFFF}],
+     partner_only=True)
+
+_add_reg("nv_kill_freestyle", "Kill NVIDIA FreeStyle / ShadowPlay Overhead",
+     "Disables the NVIDIA overlay hook that adds ~1-2% CPU cost every frame.",
+     "\U0001F3A5", "Partner Exclusive", LOCKED,
+     [{"hive": "HKCU", "path": r"SOFTWARE\NVIDIA Corporation\Global\ShadowPlay\NVSPCAPS", "name": "ShadowPlayEnabled", "on": 0, "off": 1},
+      {"hive": "HKCU", "path": r"SOFTWARE\NVIDIA Corporation\Global\ShadowPlay\NVSPCAPS", "name": "DVREnabled", "on": 0, "off": 1}],
+     admin=False, partner_only=True)
 
 
 TWEAKS = _defs

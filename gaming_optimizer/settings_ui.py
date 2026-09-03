@@ -379,6 +379,48 @@ class SettingsDialog(ctk.CTkToplevel):
         )
         self.startup_msg.pack(anchor="w", padx=16, pady=(0, 10))
 
+        # ==========================================================
+        # Startup sound toggle (opt-in, default OFF)
+        # ==========================================================
+        sound_card = ctk.CTkFrame(
+            parent, fg_color=self.theme["CARD"], corner_radius=12,
+            border_width=1, border_color=self.theme["BORDER"],
+        )
+        sound_card.pack(fill="x", padx=4, pady=(10, 6))
+
+        ctk.CTkLabel(
+            sound_card, text="\U0001F509  Startup sound",
+            font=("Rajdhani", 14, "bold"),
+            text_color=self.theme["TEXT"], anchor="w",
+        ).pack(anchor="w", padx=16, pady=(14, 2))
+        ctk.CTkLabel(
+            sound_card,
+            text="Play a subtle whoosh/voice line when Kage boots. Off by default.",
+            font=("Inter", 11), text_color=self.theme["MUTED"], anchor="w",
+        ).pack(anchor="w", padx=16, pady=(0, 10))
+
+        s = load_settings()
+        self.sound_switch = ctk.CTkSwitch(
+            sound_card,
+            text="Enabled" if s.get("startup_sound", False) else "Disabled",
+            command=self._toggle_startup_sound,
+            progress_color=self.theme["ACCENT"],
+            button_color=self.theme["TEXT"],
+            button_hover_color=self.theme["ACCENT"],
+            fg_color="#242a33", text_color=self.theme["TEXT"],
+            font=("Rajdhani", 12, "bold"),
+        )
+        if s.get("startup_sound", False):
+            self.sound_switch.select()
+        self.sound_switch.pack(anchor="w", padx=16, pady=(0, 14))
+
+    def _toggle_startup_sound(self):
+        want = bool(self.sound_switch.get())
+        s = load_settings()
+        s["startup_sound"] = want
+        save_settings(s)
+        self.sound_switch.configure(text="Enabled" if want else "Disabled")
+
     def _toggle_autostart(self):
         import startup as autostart
         want = bool(self.startup_switch.get())
