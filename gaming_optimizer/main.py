@@ -294,7 +294,7 @@ class App(ctk.CTk):
                      text_color=t["TEXT"], anchor="w").grid(row=0, column=1, sticky="sw")
 
         ctk.CTkLabel(header,
-                     text="53 Windows tweaks \u2014 fully reversible. \u5F71  Move like a shadow.",
+                     text="53 Windows 10/11 tweaks \u2014 fully reversible.   \u5F71  Move like a shadow.",
                      font=("Inter", 11), text_color=t["MUTED"],
                      anchor="w").grid(row=1, column=1, sticky="nw")
 

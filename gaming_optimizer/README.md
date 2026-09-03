@@ -1,6 +1,6 @@
 # Kage Utility 影
 
-**Move like a shadow.** 53 real Windows 11 gaming tweaks in a dark, purple-accented desktop app. Fully reversible. Free tier + premium tier gated by your secret code.
+**Move like a shadow.** 53 real gaming tweaks for **Windows 10 and 11** in a dark, purple-accented desktop app. Fully reversible. Free tier + premium tier gated by your secret code.
 
 ---
 
