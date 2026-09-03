@@ -336,6 +336,30 @@ class App(ctk.CTk):
             )
             self.owner_badge.pack(side="right", padx=(4, 4))
 
+        # ---------- Admin warning banner ----------
+        if not is_admin():
+            warn = ctk.CTkFrame(self, fg_color="#3d1520",
+                                corner_radius=10, border_width=1,
+                                border_color=t["DANGER"])
+            warn.pack(fill="x", padx=28, pady=(4, 6))
+            warn.grid_columnconfigure(1, weight=1)
+            ctk.CTkLabel(warn, text="\u26A0",
+                         font=("Segoe UI Emoji", 22),
+                         text_color=t["DANGER"], width=40).grid(row=0, column=0,
+                                                                rowspan=2, padx=(12, 4), pady=8)
+            ctk.CTkLabel(
+                warn, text="NOT RUNNING AS ADMINISTRATOR",
+                font=("Rajdhani", 14, "bold"),
+                text_color=t["DANGER"], anchor="w",
+            ).grid(row=0, column=1, sticky="w", pady=(8, 0))
+            ctk.CTkLabel(
+                warn,
+                text="Most tweaks change system-wide registry keys and WILL silently fail without admin. "
+                     "Click 'RUN AS ADMIN' on the right to relaunch elevated.",
+                font=("Inter", 11), text_color=t["TEXT"],
+                anchor="w", justify="left", wraplength=700,
+            ).grid(row=1, column=1, sticky="w", pady=(0, 10))
+
         # ---------- Action bar ----------
         actions = ctk.CTkFrame(self, fg_color=t["BG"])
         actions.pack(fill="x", padx=28, pady=(6, 10))
@@ -663,16 +687,29 @@ class App(ctk.CTk):
             try:
                 if wants_on:
                     result = tweak["apply"]()
-                    history.record(tweak)
-                    self.rp.update(f"Applied: {tweak['title'][:40]}",
-                                   "Optimizing with Kage")
-                    if tweak["id"] == "clean_temp" and isinstance(result, int):
-                        mb = result / (1024 * 1024)
-                        self.set_status(f"\u2713 Cleaned {mb:.1f} MB of temp files.",
-                                        self.theme["ACCENT"])
+                    # Verify the tweak actually took effect by reading the real state
+                    try:
+                        actual = tweak["status"]()
+                    except Exception:
+                        actual = "off"
+                    if actual != "on":
+                        self.set_status(
+                            f"\u26A0 '{tweak['title']}' did NOT apply. "
+                            "Click 'RUN AS ADMIN' at the top-right, then try again. "
+                            "(Some tweaks also need a reboot to show up in Windows Settings.)",
+                            self.theme["DANGER"],
+                        )
                     else:
-                        self.set_status(f"\u2713 Applied: {tweak['title']}",
-                                        self.theme["ACCENT"])
+                        history.record(tweak)
+                        self.rp.update(f"Applied: {tweak['title'][:40]}",
+                                       "Optimizing with Kage")
+                        if tweak["id"] == "clean_temp" and isinstance(result, int):
+                            mb = result / (1024 * 1024)
+                            self.set_status(f"\u2713 Cleaned {mb:.1f} MB of temp files.",
+                                            self.theme["ACCENT"])
+                        else:
+                            self.set_status(f"\u2713 Applied: {tweak['title']}  (reboot may be needed for full effect)",
+                                            self.theme["ACCENT"])
                 else:
                     tweak["restore"]()
                     history.drop(tweak["id"])

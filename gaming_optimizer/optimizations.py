@@ -117,8 +117,16 @@ def _reg_tweak(tweak_id, ops):
                 saved[key] = old
         b[tweak_id] = saved
         _save_backup(b)
+        all_ok = True
         for op in ops:
-            _reg_set(op["hive"], op["path"], op["name"], op["on"], op.get("typ"))
+            ok = _reg_set(op["hive"], op["path"], op["name"], op["on"], op.get("typ"))
+            if not ok:
+                all_ok = False
+        if not all_ok:
+            raise PermissionError(
+                "Registry write failed — this tweak needs Administrator rights. "
+                "Click 'RUN AS ADMIN' and try again."
+            )
         return True
 
     def restore_fn():
