@@ -1,6 +1,20 @@
-"""FragBoost theme presets."""
+"""Kage Utility theme presets."""
 
 THEMES = {
+    "Kage Purple": {
+        "BG": "#07040d",
+        "CARD": "#120a1f",
+        "CARD_LOCKED": "#0b0715",
+        "BORDER": "#2a1b47",
+        "ACCENT": "#a05aff",
+        "ACCENT_DIM": "#6b39ad",
+        "GOLD": "#e6b8ff",
+        "DANGER": "#ff5a7c",
+        "MUTED": "#6c5a85",
+        "MUTED_LOCKED": "#332a44",
+        "TEXT": "#efe4ff",
+        "TEXT_LOCKED": "#4f4562",
+    },
     "Neon Green": {
         "BG": "#0a0d10",
         "CARD": "#141a1f",
@@ -73,4 +87,4 @@ THEMES = {
     },
 }
 
-DEFAULT_THEME = "Neon Green"
+DEFAULT_THEME = "Kage Purple"

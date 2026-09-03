@@ -20,9 +20,11 @@ from licensing import (
     submit_code, is_unlocked, is_owner_revoked, is_owner_session,
 )
 from settings_ui import SettingsDialog, get_theme
+import history
+import updater
 
-APP_NAME = "FragBoost"
-APP_VER = "1.1"
+APP_NAME = "Kage Utility"
+APP_VER = "1.2"
 
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("dark-blue")
@@ -218,13 +220,24 @@ class App(ctk.CTk):
     def __init__(self):
         super().__init__()
         self.theme_name, self.theme = get_theme()
-        self.title(f"{APP_NAME} \u2014 Gaming Optimizer")
+        self.title(f"{APP_NAME} \u2014 Windows Gaming Optimizer")
+        # Set window icon if available
+        try:
+            icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "icon.ico")
+            if getattr(sys, "frozen", False):
+                icon_path = os.path.join(sys._MEIPASS, "icon.ico") if hasattr(sys, "_MEIPASS") else icon_path
+            if os.path.exists(icon_path):
+                self.iconbitmap(icon_path)
+        except Exception:
+            pass
         self.geometry("980x840")
         self.minsize(880, 700)
         self.configure(fg_color=self.theme["BG"])
         self.cards = []
         self._build_ui()
         self._check_platform()
+        # Async update check
+        updater.check_async(self._on_update_available)
 
     def _unlocked(self):
         return is_unlocked()
@@ -246,7 +259,7 @@ class App(ctk.CTk):
                      text_color=t["TEXT"], anchor="w").grid(row=0, column=1, sticky="sw")
 
         ctk.CTkLabel(header,
-                     text="53 Windows 11 gaming tweaks \u2014 fully reversible.",
+                     text="53 Windows tweaks \u2014 fully reversible. \u5F71  Move like a shadow.",
                      font=("Inter", 11), text_color=t["MUTED"],
                      anchor="w").grid(row=1, column=1, sticky="nw")
 
@@ -303,8 +316,18 @@ class App(ctk.CTk):
             actions, text="\u21BA  RESTORE ALL",
             command=self.restore_all,
             fg_color="#242a33", hover_color="#2f3742", text_color=t["TEXT"],
-            font=("Rajdhani", 14, "bold"), height=40, corner_radius=10, width=150,
+            font=("Rajdhani", 14, "bold"), height=40, corner_radius=10, width=140,
         ).pack(side="left", padx=(8, 0))
+
+        # Undo last
+        self.btn_undo = ctk.CTkButton(
+            actions, text="\u238C  UNDO LAST",
+            command=self.undo_last,
+            fg_color="#2a1b47", hover_color="#3d2865", text_color=t["ACCENT"],
+            font=("Rajdhani", 14, "bold"), height=40, corner_radius=10, width=140,
+        )
+        self.btn_undo.pack(side="left", padx=(8, 0))
+        self._refresh_undo_state()
 
         if not self._unlocked():
             self.btn_unlock = ctk.CTkButton(
@@ -392,6 +415,56 @@ class App(ctk.CTk):
                 card.pack(fill="x", padx=6, pady=4)
                 self.cards.append(card)
 
+    def _refresh_undo_state(self):
+        if hasattr(self, "btn_undo"):
+            if history.has_undo():
+                last = history.peek()
+                self.btn_undo.configure(
+                    state="normal",
+                    text=f"\u238C  UNDO: {last['title'][:18]}\u2026" if len(last["title"]) > 18 else f"\u238C  UNDO",
+                )
+            else:
+                self.btn_undo.configure(state="disabled", text="\u238C  UNDO LAST")
+
+    def undo_last(self):
+        tw = history.pop()
+        if not tw:
+            return
+
+        def worker():
+            self.set_status(f"Undoing: {tw['title']}\u2026", self.theme["ACCENT"])
+            try:
+                tw["restore"]()
+                self.set_status(f"\u21BA Undid: {tw['title']}", self.theme["MUTED"])
+            except Exception as e:
+                self.set_status(f"\u2717 Undo failed on '{tw['title']}': {e}",
+                                self.theme["DANGER"])
+            for card in self.cards:
+                if card.tweak["id"] == tw["id"]:
+                    card.refresh_status()
+                    break
+            self._refresh_undo_state()
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _on_update_available(self, info):
+        # Called from a background thread — marshal to Tk main thread
+        def show():
+            msg = (
+                f"Kage Utility {info['version']} is available "
+                f"(you're on {updater.APP_VERSION}).\n\n"
+                f"{info.get('notes', '')[:300] or 'Open the release page for details.'}\n\n"
+                "Open the download page now?"
+            )
+            if messagebox.askyesno("Update available", msg):
+                try:
+                    import webbrowser
+                    webbrowser.open(info["url"])
+                except Exception:
+                    pass
+
+        self.after(600, show)
+
     def _check_platform(self):
         if platform.system() != "Windows":
             messagebox.showwarning(
@@ -478,6 +551,7 @@ class App(ctk.CTk):
             try:
                 if wants_on:
                     result = tweak["apply"]()
+                    history.record(tweak)
                     if tweak["id"] == "clean_temp" and isinstance(result, int):
                         mb = result / (1024 * 1024)
                         self.set_status(f"\u2713 Cleaned {mb:.1f} MB of temp files.",
@@ -487,6 +561,7 @@ class App(ctk.CTk):
                                         self.theme["ACCENT"])
                 else:
                     tweak["restore"]()
+                    history.drop(tweak["id"])
                     self.set_status(f"\u21BA Restored: {tweak['title']}",
                                     self.theme["MUTED"])
             except Exception as e:
@@ -494,6 +569,7 @@ class App(ctk.CTk):
                                 self.theme["DANGER"])
             finally:
                 card.refresh_status()
+                self._refresh_undo_state()
 
         threading.Thread(target=worker, daemon=True).start()
 
@@ -522,9 +598,11 @@ class App(ctk.CTk):
                 self.set_status(f"Applying: {tw['title']}\u2026", self.theme["ACCENT"])
                 try:
                     tw["apply"]()
+                    history.record(tw)
                 except Exception as e:
                     self.set_status(f"\u2717 {tw['title']}: {e}", self.theme["DANGER"])
                 card.refresh_status()
+            self._refresh_undo_state()
             self.set_status(
                 "\u2713 Done. Reboot recommended for full effect.", self.theme["ACCENT"]
             )
@@ -549,6 +627,8 @@ class App(ctk.CTk):
                 except Exception as e:
                     self.set_status(f"\u2717 {tw['title']}: {e}", self.theme["DANGER"])
                 card.refresh_status()
+            history.clear()
+            self._refresh_undo_state()
             self.set_status("\u21BA All settings restored.", self.theme["MUTED"])
 
         threading.Thread(target=worker, daemon=True).start()

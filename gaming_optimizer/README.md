@@ -1,72 +1,46 @@
-# FragBoost — Windows 11 Gaming Optimizer
+# Kage Utility 影
 
-53 real, reversible Windows 11 gaming tweaks in one dark-themed desktop app.
-Free tier ships 32 tweaks; premium tier unlocks all 53 with your secret code.
+**Move like a shadow.** 53 real Windows 11 gaming tweaks in a dark, purple-accented desktop app. Fully reversible. Free tier + premium tier gated by your secret code.
 
 ---
 
-## 🔑 Your codes (keep these private!)
+## 🔑 Your codes (keep private)
 
 | Code | Purpose |
 |------|---------|
-| `FRAG42` | **Premium unlock** — anyone with this code unlocks all 53 tweaks on their PC |
-| `2006james` | **Owner override** — YOUR master key. Entering it on any PC toggles between: revoking that PC's premium access, OR restoring it. |
+| `FRAG42` | **Premium unlock** — anyone with it unlocks all 53 tweaks on their PC |
+| `2006james` | **Owner override** — your master key. On any PC it toggles between revoking premium and re-enabling it, and reveals the hidden Owner Console tab. |
 
-**How the owner code works in practice:**
-1. Friend types `FRAG42` on their PC → premium unlocked for them.
-2. They share it with someone you don't like.
-3. You visit that PC (or send them a build), type `2006james` in the unlock dialog → their premium access is REVOKED. `FRAG42` will no longer work on that machine until you re-enter `2006james` on it.
-
-Codes are set in `licensing.py` at the top — edit that file to rotate them.
+You can rotate the secret code at runtime via **⚙ Settings → 👑 Owner** without recompiling.
 
 ---
 
-## 🧩 Tweak catalogue (53 total)
+## ✨ What's inside
 
-### 🔒 Premium (need `FRAG42`) — 21 tweaks
-- **CPU & Power (5):** Ultimate Power Plan, Disable Core Parking, Disable CPU Throttling, Disable USB Selective Suspend, Disable PCIe Link Power Mgmt
-- **Network (5):** Disable Nagle's Algorithm, Cloudflare DNS, Disable Network Throttling, Increase Network Buffers, Disable QoS Reservation
-- **GPU / DirectX (3):** Prefer HP GPU Globally, GPU Prefer Max Perf, Games Launch at High Priority
-- **Input (4):** Disable Mouse Accel, Disable Sticky/Filter/Toggle Keys, Reduce Keyboard Delay, HID Priority Boost
-- **System (4):** Foreground Priority Boost, No Notifs in Fullscreen, Disable Focus Assist Auto, Boost System Responsiveness
+### 53 tweaks in 11 categories
+- **CPU & Power** (5, 🔒) — Ultimate Power Plan, Core Parking, CPU Throttling, USB Suspend, PCIe LPM
+- **Network** (5, 🔒) — Nagle, Cloudflare DNS, Throttling Index, TCP Buffers, QoS Reserve
+- **GPU / DirectX** (3, 🔒) — HP GPU Global, HwSchMode + TDR, Games High Priority
+- **Input** (4, 🔒) — Mouse Accel, Sticky Keys, Keyboard Delay, HID Priority
+- **System** (4, 🔒) — Foreground CPU Boost, Fullscreen Notif Block, Focus Assist Off, Sys Responsiveness
+- **Gaming** (6) — Xbox Game Bar off, Game DVR off, Game Mode on, HAGS, Auto HDR, no FSO
+- **Visuals** (5) — Best Perf FX, no Animations, no Transparency, no Cursor Shadow, 0 Menu Delay
+- **Startup** (7) — Startup Apps, Telemetry Tasks, Cortana, Search Index, SysMain, Widgets, BG Apps
+- **Disk** (7) — Temp Clean, WU Cache, DNS Flush, Hibernation, Pagefile, NTFS atime, TRIM
+- **Privacy** (5) — Telemetry, Ad ID, Activity History, Location, Feedback
+- **Audio** (2) — Enhancements, Higher DPC Priority
 
-### 🆓 Free — 32 tweaks
-- **Gaming (6):** Disable Xbox Game Bar, Disable Game DVR, Enable Game Mode, HAGS, Auto HDR, Disable FSO Globally
-- **Visuals (5):** Best Performance mode, Disable Window Animations, Disable Transparency, Cursor Shadow, Zero Menu Delay
-- **Startup (7):** Disable Startup Apps, Disable Telemetry Tasks, Disable Cortana, Disable Search Indexing, Disable SysMain, Disable Widgets, Disable Background Apps
-- **Disk (7):** Clean Temp Files, Clear WU Cache, Flush DNS, Disable Hibernation, Pagefile only on C:, Disable NTFS atime, Enable TRIM
-- **Privacy (5):** Disable Telemetry, Advertising ID, Activity History, Location, Feedback Prompts
-- **Audio (2):** Disable Audio Enhancements, Boost Audio DPC Priority
-
-Every tweak stores its original value in `%APPDATA%\GamingOptimizer\backup.json` before writing.
-
----
-
-## 🎨 Themes (5 built-in)
-Pick from Neon Green, Cyberpunk Pink, Arctic Blue, Solar Orange, Void Purple in **⚙ Settings → Themes**. Applied instantly, persists across launches.
-
-## 📋 Profile Presets
-Built-in presets (in **⚙ Settings → Profiles**):
-- **Competitive FPS** — 32 tweaks tuned for max input responsiveness
-- **AAA Cinematic** — 14 tweaks that keep visuals but boost GPU
-- **Streaming Setup** — 11 tweaks that balance CPU for game + OBS
-- **Minimal / Safe** — 10 gentle tweaks anyone can apply
-
-You can save your currently-applied combo as a custom profile.
-
-## 📊 Benchmark Snapshot
-**⚙ Settings → Benchmark** shows a live snapshot of every setting that matters for FPS (power plan, core parking, DVR state, HAGS, mouse accel, startup app count, etc.) with green/red indicators and an overall Optimization Score %.
-
-## 👑 Owner Console
-When you enter `2006james`, a hidden **⚙ Settings → 👑 Owner** tab appears:
-- **Rotate the secret code** at runtime without recompiling (e.g. change `FRAG42` → `FRAG2026`)
-- **Reset** to the default `FRAG42`
-- **Revoke / re-enable** premium on the current PC
-Session-only — closes when you close the app.
+### Extras
+- 🎨 **6 themes** — Kage Purple (default), Neon Green, Cyberpunk Pink, Arctic Blue, Solar Orange, Void Purple
+- 📋 **4 built-in profiles** — Competitive FPS, AAA Cinematic, Streaming Setup, Minimal / Safe. Save your own.
+- 📊 **Benchmark tab** — live snapshot with Optimization Score %
+- 👑 **Owner Console** — rotate secret code, revoke/re-enable premium per PC
+- ⌫ **Undo Last** — single-step revert of the most recent applied tweak
+- 🌐 **Auto-update check** — silently pings a GitHub releases URL on launch (set `RELEASES_URL` in `updater.py`)
 
 ---
 
-## 🖥 Running from source (development)
+## 🖥 Running from source
 
 ```bat
 pip install -r requirements.txt
@@ -85,16 +59,24 @@ On any Windows 11 PC with Python 3.10+:
 build.bat
 ```
 
-Result: `dist\FragBoost.exe` — one portable file (~25 MB, self-contained).
-It auto-requests UAC elevation via the `--uac-admin` PyInstaller flag.
+Auto-generates the custom purple K icon, then packages into:
 
-Send that one file to friends. They double-click, tweak, done.
+```
+dist\KageUtility.exe
+```
+
+Single file, ~30 MB, includes the icon, auto-requests admin on launch.
+Send it to friends. They double-click and go.
 
 ---
 
-## 🛡 Safety guarantees
+## 🛡 Safety
 
-- Every registry / powercfg value backed up **before** mutation
-- Restore All returns everything to the exact prior value
-- No telemetry, no network calls (except when you enable Cloudflare DNS)
-- Temp cleanup only touches files Windows itself considers disposable
+- Every registry / powercfg value backed up **before** mutation → `%APPDATA%\GamingOptimizer\backup.json`
+- **Undo Last** for one-step revert; **Restore All** for full rollback
+- No telemetry, only outbound call is the (optional) GitHub update check
+- Non-Windows platforms: warned once, tweaks silently no-op
+
+---
+
+*Kage (影) — Japanese for "shadow". Optimizes silently.*

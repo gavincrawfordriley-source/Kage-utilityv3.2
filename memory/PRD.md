@@ -1,55 +1,55 @@
-# FragBoost — PRD
+# Kage Utility 影 — PRD
 
 ## Original problem statement
 > "i want an app that can help optimize a pc for gaming like max power plan turns of xbox game bar and game mode yk that type of thing"
 
 ## Product
-Windows 11 desktop gaming optimizer with 53 real, reversible tweaks.
-Free tier (32) + Premium tier (21, code-gated) + Owner override.
+Kage Utility — Windows 11 desktop gaming optimizer.
+53 real reversible tweaks. Free tier + code-gated premium tier + owner override.
+Black + purple ninja/shadow aesthetic. Ships as a single portable EXE with custom icon.
 
 ## Codes (owned by James)
 - Secret / premium: `FRAG42`  (rotatable at runtime via Owner Console)
-- Owner override:   `2006james`  (hardcoded; toggles revoke ↔ re-enable per PC)
+- Owner override:   `2006james`  (hardcoded)
 
-## Tech
-- Python 3.10+, CustomTkinter (dark GUI, 5 themes)
-- PyInstaller `--onefile --windowed --uac-admin` → single portable EXE
+## Tech stack
+- Python 3.10+, CustomTkinter, Pillow (icon), packaging (semver)
+- PyInstaller `--onefile --windowed --uac-admin --icon=icon.ico`
 
 ## Files (/app/gaming_optimizer)
-- `optimizations.py` — 53 tweaks (registry, powercfg, services, schtasks)
-- `licensing.py` — free/premium/owner code logic + runtime code rotation
-- `themes.py` — 5 colour palettes
-- `profiles.py` — 4 built-in presets + save/load custom profiles
-- `benchmark.py` — system snapshot with Optimization Score %
+- `optimizations.py` — 53 tweaks
+- `licensing.py` — free/premium/owner logic + runtime code rotation
+- `themes.py` — 6 palettes (Kage Purple default)
+- `profiles.py` — 4 built-ins + custom save/load
+- `benchmark.py` — system snapshot + score
+- `history.py` — undo stack for single-step revert
+- `updater.py` — async GitHub release check
 - `settings_ui.py` — tabbed settings modal (Themes / Profiles / Benchmark / Owner)
-- `main.py` — main CTk GUI with category-grouped cards & lock overlay
-- `build.bat` — one-click PyInstaller build
-- `README.md` — usage + code reference
+- `generate_icon.py` — programmatic Kage K-shuriken icon (PIL)
+- `main.py` — main CTk GUI
+- `build.bat` — one-click build (icon gen + PyInstaller)
+- `icon.ico` / `icon.png` — generated brand assets
 
-## Tweak split
-- 21 LOCKED (premium): CPU & Power (5), Network (5), GPU/DirectX (3), Input (4), System (4)
-- 32 FREE: Gaming (6), Visuals (5), Startup (7), Disk (7), Privacy (5), Audio (2)
-
-## Features shipped
-- v1.0: 53 tweaks, free/premium codes, owner revoke, Apply All / Restore All
-- v1.1: Custom themes (5), Profile presets (4 built-in + custom), Benchmark snapshot, Owner Console with runtime code rotation
+## v1.2 additions (this iteration)
+- Full rebrand: FragBoost → Kage Utility, tagline "Move like a shadow"
+- Custom app icon: black tile + glowing purple K-shuriken (generated programmatically at build)
+- Kage Purple as default theme
+- Undo Last button + history tracking
+- Auto-update check via `updater.py` (GitHub releases API, non-blocking)
 
 ## Safety
-- Every registry/powercfg value backed up to %APPDATA%\GamingOptimizer\backup.json BEFORE mutation
-- Individual toggles + Apply All + Restore All
-- Non-Windows platforms show a warning; tweaks silently no-op
-- License, settings, profiles, owner config persisted in %APPDATA%\GamingOptimizer
+- Every value backed up before mutation
+- Undo Last, Restore All, per-tweak toggle restore
+- Non-Windows: silent no-op with warning
 
 ## Verified
-- All 53 tweaks load successfully
-- Licensing flow tested end-to-end
-- Code rotation tested (rotate + reset)
-- Owner session flag set correctly on 2006james entry
-- All 4 built-in profiles reference valid tweak IDs
-- Python lint: 0 errors
+- All 53 tweaks load, all 6 themes present, all 4 profiles valid
+- History flow tested (record/drop/peek/pop/clear)
+- Updater tested (silent when URL empty, semver compare correct)
+- Icon generated cleanly at 512px multi-size .ico
+- Lint: 0 errors across all modules
 
 ## Backlog
-- Icon / branded EXE resource
-- Auto-update via GitHub release check
-- Per-tweak "undo last" instead of full Restore All
-- Optional: export/import profiles as .json files to share with friends
+- Share profiles as .kage files (export/import)
+- Set `RELEASES_URL` once repo is public
+- Optional: signed EXE for SmartScreen trust
