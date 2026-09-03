@@ -34,6 +34,7 @@ python -m PyInstaller ^
   --add-data "splash_source.png;." ^
   --add-data "bg.png;." ^
   --add-data "whoosh.wav;." ^
+  --add-data "voice.wav;." ^
   --collect-all customtkinter ^
   --hidden-import pystray._win32 ^
   --hidden-import pypresence ^

@@ -74,14 +74,15 @@ class SettingsDialog(ctk.CTkToplevel):
     # ---------- Themes ----------
     def _build_themes(self, parent):
         current, _ = get_theme()
+        premium_unlocked = licensing.is_unlocked()
         ctk.CTkLabel(
-            parent, text="Pick a colour vibe",
+            parent, text="Kage Skin Store",
             font=("Rajdhani", 18, "bold"),
             text_color=self.theme["TEXT"],
         ).pack(anchor="w", pady=(8, 4))
         ctk.CTkLabel(
             parent,
-            text="Match your setup. Change is instant.",
+            text="Free skins for everyone \u2014 premium skins unlock with FRAG42.",
             font=("Inter", 11), text_color=self.theme["MUTED"],
         ).pack(anchor="w", pady=(0, 14))
 
@@ -90,6 +91,8 @@ class SettingsDialog(ctk.CTkToplevel):
 
         for i, (name, t) in enumerate(THEMES.items()):
             row, col = divmod(i, 2)
+            is_premium = t.get("premium", False)
+            locked = is_premium and not premium_unlocked
             card = ctk.CTkFrame(
                 grid, fg_color=t["CARD"], corner_radius=12,
                 border_width=2 if name == current else 1,
@@ -99,13 +102,13 @@ class SettingsDialog(ctk.CTkToplevel):
             card.grid(row=row, column=col, padx=8, pady=8, sticky="nsew")
             grid.grid_columnconfigure(col, weight=1)
 
+            title = ("\U0001F512  " if locked else ("\u2605  " if is_premium else "")) + name
             ctk.CTkLabel(
-                card, text=name,
+                card, text=title,
                 font=("Rajdhani", 15, "bold"),
-                text_color=t["ACCENT"],
+                text_color=t["MUTED"] if locked else t["ACCENT"],
             ).pack(anchor="w", padx=14, pady=(12, 2))
 
-            # swatches
             sw = ctk.CTkFrame(card, fg_color=t["CARD"])
             sw.pack(anchor="w", padx=14, pady=(4, 8))
             for c in [t["ACCENT"], t["GOLD"], t["TEXT"], t["BG"], t["MUTED"]]:
@@ -113,17 +116,25 @@ class SettingsDialog(ctk.CTkToplevel):
                              corner_radius=6, border_width=1,
                              border_color=t["BORDER"]).pack(side="left", padx=2)
 
+            btn_text = "ACTIVE" if name == current else ("PREMIUM" if locked else "APPLY")
             btn = ctk.CTkButton(
-                card, text="ACTIVE" if name == current else "APPLY",
-                command=lambda n=name: self._apply_theme(n),
-                fg_color=t["ACCENT"] if name != current else "#242a33",
+                card, text=btn_text,
+                command=(lambda n=name: self._apply_theme(n)) if not locked else self._premium_pop,
+                fg_color=t["ACCENT"] if name != current and not locked else "#242a33",
                 hover_color=t["ACCENT_DIM"],
-                text_color="#0a0f0a" if name != current else t["MUTED"],
+                text_color="#0a0f0a" if name != current and not locked else t["MUTED"],
                 font=("Rajdhani", 12, "bold"),
                 height=28, width=90, corner_radius=8,
                 state="disabled" if name == current else "normal",
             )
             btn.pack(anchor="e", padx=14, pady=(0, 10))
+
+    def _premium_pop(self):
+        messagebox.showinfo(
+            "Premium skin",
+            "This skin is part of the Kage Premium pack.\n\n"
+            "Enter the FRAG42 code (main window \u2192 ENTER CODE) to unlock all premium skins."
+        )
 
     def _apply_theme(self, name):
         s = load_settings()

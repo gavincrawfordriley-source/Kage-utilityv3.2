@@ -438,7 +438,7 @@ def _add_reg(tid, title, desc, icon, category, locked, ops, admin=True):
 
 
 # ---------- CPU & POWER (LOCKED) ----------
-_add("power_plan", "Ultimate Performance Power Plan",
+_add("power_plan", "Kage Max Power Plan",
      "Unlocks and activates the hidden Ultimate power plan for max CPU responsiveness.",
      "\u26A1", "CPU & Power", LOCKED, _pp_apply, _pp_restore, _pp_status)
 

@@ -26,6 +26,7 @@ from splash import Splash
 from tray import TrayController
 from discord_rp import RichPresence
 from sound import play_splash_sound
+from voice import play_intro
 import startup as autostart
 
 APP_NAME = "Kage Utility"
@@ -701,7 +702,7 @@ def main():
         app_holder["app"].mainloop()
 
     Splash.show(root, on_done=build_app)
-    play_splash_sound()
+    play_intro()  # falls back to whoosh if pyttsx3 unavailable
     root.mainloop()
 
 
