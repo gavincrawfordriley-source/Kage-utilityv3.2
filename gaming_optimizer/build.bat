@@ -9,8 +9,10 @@ python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
 
 echo.
-echo [2/4] Generating custom app icon...
+echo [2/4] Generating custom app icon and background...
 python generate_icon.py
+python generate_bg.py
+python -c "from sound import ensure_sfx; ensure_sfx()"
 
 echo.
 echo [3/4] Cleaning old build...
@@ -30,6 +32,8 @@ python -m PyInstaller ^
   --add-data "icon.ico;." ^
   --add-data "icon.png;." ^
   --add-data "splash_source.png;." ^
+  --add-data "bg.png;." ^
+  --add-data "whoosh.wav;." ^
   --collect-all customtkinter ^
   --hidden-import pystray._win32 ^
   --hidden-import pypresence ^

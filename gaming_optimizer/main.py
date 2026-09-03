@@ -25,6 +25,8 @@ import updater
 from splash import Splash
 from tray import TrayController
 from discord_rp import RichPresence
+from sound import play_splash_sound
+import startup as autostart
 
 APP_NAME = "Kage Utility"
 APP_VER = "1.3"
@@ -236,18 +238,40 @@ class App(ctk.CTk):
         self.geometry("980x840")
         self.minsize(880, 700)
         self.configure(fg_color=self.theme["BG"])
+        # subtle gaming-feel transparency (Windows)
+        try:
+            self.attributes("-alpha", 0.97)
+        except Exception:
+            pass
+        # background image
+        self._bg_img = None
+        try:
+            from PIL import Image
+            bg_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "bg.png")
+            if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+                bg_path = os.path.join(sys._MEIPASS, "bg.png")
+            if os.path.exists(bg_path):
+                pil = Image.open(bg_path)
+                self._bg_img = ctk.CTkImage(light_image=pil, dark_image=pil,
+                                            size=(1600, 1200))
+                self._bg_label = ctk.CTkLabel(self, image=self._bg_img, text="")
+                self._bg_label.place(x=0, y=0, relwidth=1, relheight=1)
+                self._bg_label.lower()
+        except Exception:
+            pass
+        # tray + rp start after window shown
         self.cards = []
         self.tray = TrayController(self)
         self.rp = RichPresence()
         self._build_ui()
         self._check_platform()
-        # Async update check
         updater.check_async(self._on_update_available)
-        # Start tray + Discord in background
         self.tray.start()
         self.rp.connect_async()
-        # Hide close = minimize to tray (if tray available)
         self.protocol("WM_DELETE_WINDOW", self._on_close)
+        # honour --tray flag: start minimized
+        if "--tray" in sys.argv and self.tray.available:
+            self.after(200, self.withdraw)
 
     def _unlocked(self):
         return is_unlocked()
@@ -677,6 +701,7 @@ def main():
         app_holder["app"].mainloop()
 
     Splash.show(root, on_done=build_app)
+    play_splash_sound()
     root.mainloop()
 
 

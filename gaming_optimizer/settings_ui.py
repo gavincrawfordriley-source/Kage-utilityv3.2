@@ -60,12 +60,14 @@ class SettingsDialog(ctk.CTkToplevel):
         tabs.add("\U0001F3A8 Themes")
         tabs.add("\U0001F4CB Profiles")
         tabs.add("\U0001F4CA Benchmark")
+        tabs.add("\u2699 System")
         if licensing.is_owner_session():
             tabs.add("\U0001F451 Owner")
 
         self._build_themes(tabs.tab("\U0001F3A8 Themes"))
         self._build_profiles(tabs.tab("\U0001F4CB Profiles"))
         self._build_benchmark(tabs.tab("\U0001F4CA Benchmark"))
+        self._build_system(tabs.tab("\u2699 System"))
         if licensing.is_owner_session():
             self._build_owner(tabs.tab("\U0001F451 Owner"))
 
@@ -302,6 +304,79 @@ class SettingsDialog(ctk.CTkToplevel):
                          text_color=self.theme["MUTED"], anchor="w",
                          justify="left", wraplength=380).pack(side="left", fill="x",
                                                               expand=True, padx=(0, 12), pady=8)
+
+    # ---------- System ----------
+    def _build_system(self, parent):
+        import startup as autostart
+
+        ctk.CTkLabel(
+            parent, text="System integration",
+            font=("Rajdhani", 18, "bold"),
+            text_color=self.theme["TEXT"],
+        ).pack(anchor="w", pady=(8, 4))
+        ctk.CTkLabel(
+            parent,
+            text="Make Kage part of your Windows setup.",
+            font=("Inter", 11), text_color=self.theme["MUTED"],
+        ).pack(anchor="w", pady=(0, 20))
+
+        card = ctk.CTkFrame(
+            parent, fg_color=self.theme["CARD"], corner_radius=12,
+            border_width=1, border_color=self.theme["BORDER"],
+        )
+        card.pack(fill="x", padx=4, pady=6)
+
+        ctk.CTkLabel(
+            card, text="\U0001F680  Start with Windows",
+            font=("Rajdhani", 14, "bold"),
+            text_color=self.theme["TEXT"], anchor="w",
+        ).pack(anchor="w", padx=16, pady=(14, 2))
+        ctk.CTkLabel(
+            card,
+            text="Kage will boot silently to the system tray on login.",
+            font=("Inter", 11), text_color=self.theme["MUTED"], anchor="w",
+        ).pack(anchor="w", padx=16, pady=(0, 10))
+
+        row = ctk.CTkFrame(card, fg_color=self.theme["CARD"])
+        row.pack(anchor="w", padx=16, pady=(0, 14))
+
+        enabled = autostart.is_enabled()
+        self.startup_switch = ctk.CTkSwitch(
+            row, text="Enabled" if enabled else "Disabled",
+            command=self._toggle_autostart,
+            progress_color=self.theme["ACCENT"],
+            button_color=self.theme["TEXT"],
+            button_hover_color=self.theme["ACCENT"],
+            fg_color="#242a33",
+            text_color=self.theme["TEXT"],
+            font=("Rajdhani", 12, "bold"),
+        )
+        if enabled:
+            self.startup_switch.select()
+        self.startup_switch.pack(side="left")
+
+        self.startup_msg = ctk.CTkLabel(
+            card, text="", font=("Inter", 10),
+            text_color=self.theme["MUTED"],
+        )
+        self.startup_msg.pack(anchor="w", padx=16, pady=(0, 10))
+
+    def _toggle_autostart(self):
+        import startup as autostart
+        want = bool(self.startup_switch.get())
+        ok = autostart.enable() if want else autostart.disable()
+        if ok:
+            self.startup_switch.configure(text="Enabled" if want else "Disabled")
+            self.startup_msg.configure(
+                text=("\u2713 Kage will now start with Windows (minimized to tray)."
+                      if want else "\u21BA Auto-start disabled."),
+                text_color=self.theme["ACCENT"] if want else self.theme["MUTED"],
+            )
+        else:
+            self.startup_msg.configure(
+                text="\u2717 Couldn't update Run key. Try Run as Admin.",
+                text_color=self.theme["DANGER"],
+            )
 
     # ---------- Owner Console ----------
     def _build_owner(self, parent):
