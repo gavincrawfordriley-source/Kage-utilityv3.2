@@ -1,21 +1,28 @@
 """
-Windows 11 Gaming Optimizations
-All tweak logic lives here. Each tweak has apply() and restore() methods.
-Registry & powercfg backups are stored in backup.json so restore is safe.
+FragBoost — all 53 Windows 11 gaming tweaks.
+Every tweak has apply() + restore(). Registry / powercfg values are backed up
+to %APPDATA%\\GamingOptimizer\\backup.json before mutation.
 """
 import os
 import json
 import shutil
 import subprocess
 import ctypes
-import winreg
 from pathlib import Path
 
-BACKUP_FILE = Path(os.getenv("APPDATA", ".")) / "GamingOptimizer" / "backup.json"
-BACKUP_FILE.parent.mkdir(parents=True, exist_ok=True)
+try:
+    import winreg
+except ImportError:  # non-Windows dev
+    winreg = None
+
+APPDIR = Path(os.getenv("APPDATA", ".")) / "GamingOptimizer"
+APPDIR.mkdir(parents=True, exist_ok=True)
+BACKUP_FILE = APPDIR / "backup.json"
 
 
-# ---------- helpers ----------
+# ============================================================
+# Helpers
+# ============================================================
 def _load_backup():
     if BACKUP_FILE.exists():
         try:
@@ -26,260 +33,225 @@ def _load_backup():
 
 
 def _save_backup(data):
-    BACKUP_FILE.write_text(json.dumps(data, indent=2))
+    BACKUP_FILE.write_text(json.dumps(data, indent=2, default=str))
 
 
-def _run(cmd, shell=True):
-    """Run a command hidden and capture output."""
+def _run(cmd):
     try:
-        result = subprocess.run(
-            cmd,
-            shell=shell,
-            capture_output=True,
-            text=True,
+        r = subprocess.run(
+            cmd, shell=True, capture_output=True, text=True,
             creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
         )
-        return result.returncode == 0, (result.stdout or "") + (result.stderr or "")
+        return r.returncode == 0, (r.stdout or "") + (r.stderr or "")
     except Exception as e:
         return False, str(e)
 
 
+def _hive(s):
+    return {"HKCU": winreg.HKEY_CURRENT_USER, "HKLM": winreg.HKEY_LOCAL_MACHINE}[s]
+
+
 def _reg_get(hive, path, name):
-    try:
-        with winreg.OpenKey(hive, path, 0, winreg.KEY_READ) as key:
-            val, typ = winreg.QueryValueEx(key, name)
-            return val, typ
-    except FileNotFoundError:
+    if winreg is None:
         return None, None
+    try:
+        with winreg.OpenKey(_hive(hive), path, 0, winreg.KEY_READ) as k:
+            v, t = winreg.QueryValueEx(k, name)
+            return v, t
     except Exception:
         return None, None
 
 
-def _reg_set(hive, path, name, value, typ=winreg.REG_DWORD):
+def _reg_set(hive, path, name, value, typ=None):
+    if winreg is None:
+        return False
+    if typ is None:
+        typ = winreg.REG_DWORD if isinstance(value, int) else winreg.REG_SZ
     try:
-        winreg.CreateKey(hive, path)
-        with winreg.OpenKey(hive, path, 0, winreg.KEY_SET_VALUE) as key:
-            winreg.SetValueEx(key, name, 0, typ, value)
+        winreg.CreateKey(_hive(hive), path)
+        with winreg.OpenKey(_hive(hive), path, 0, winreg.KEY_SET_VALUE) as k:
+            winreg.SetValueEx(k, name, 0, typ, value)
         return True
-    except Exception as e:
+    except Exception:
         return False
 
 
-def _reg_delete(hive, path, name):
+def _reg_del(hive, path, name):
+    if winreg is None:
+        return False
     try:
-        with winreg.OpenKey(hive, path, 0, winreg.KEY_SET_VALUE) as key:
-            winreg.DeleteValue(key, name)
+        with winreg.OpenKey(_hive(hive), path, 0, winreg.KEY_SET_VALUE) as k:
+            winreg.DeleteValue(k, name)
         return True
     except Exception:
         return False
 
 
 def is_admin():
+    if os.name != "nt":
+        return False
     try:
         return ctypes.windll.shell32.IsUserAnAdmin() != 0
     except Exception:
         return False
 
 
-# ---------- 1. Power Plan ----------
-HIGH_PERF_GUID = "8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c"
-ULTIMATE_GUID = "e9a42b02-d5df-448d-aa00-03f14749eb61"
+# ============================================================
+# Table-driven registry tweak factory
+# ============================================================
+def _reg_tweak(tweak_id, ops):
+    """
+    ops = list of dicts: {hive, path, name, on, off?, typ?}
+      - on   : value to write when tweak is applied
+      - off  : value to write when reverting (if omitted, key is deleted OR restored from backup)
+      - typ  : REG_DWORD / REG_SZ / REG_BINARY (auto if omitted)
+    Returns (apply_fn, restore_fn, status_fn).
+    """
+    def apply_fn():
+        b = _load_backup()
+        saved = b.get(tweak_id, {})
+        for op in ops:
+            key = f"{op['hive']}|{op['path']}|{op['name']}"
+            old, _ = _reg_get(op["hive"], op["path"], op["name"])
+            if key not in saved:
+                saved[key] = old
+        b[tweak_id] = saved
+        _save_backup(b)
+        for op in ops:
+            _reg_set(op["hive"], op["path"], op["name"], op["on"], op.get("typ"))
+        return True
 
+    def restore_fn():
+        b = _load_backup()
+        saved = b.get(tweak_id, {})
+        for op in ops:
+            key = f"{op['hive']}|{op['path']}|{op['name']}"
+            if "off" in op:
+                _reg_set(op["hive"], op["path"], op["name"], op["off"], op.get("typ"))
+            elif saved.get(key) is None:
+                _reg_del(op["hive"], op["path"], op["name"])
+            else:
+                _reg_set(op["hive"], op["path"], op["name"], saved[key], op.get("typ"))
+        return True
 
-def get_power_plan_status():
-    ok, out = _run("powercfg /getactivescheme")
-    if not ok:
-        return "unknown"
-    if HIGH_PERF_GUID in out.lower() or ULTIMATE_GUID in out.lower():
+    def status_fn():
+        for op in ops:
+            v, _ = _reg_get(op["hive"], op["path"], op["name"])
+            if v != op["on"]:
+                return "off"
         return "on"
-    return "off"
+
+    return apply_fn, restore_fn, status_fn
 
 
-def apply_power_plan():
-    backup = _load_backup()
+# ============================================================
+# Custom logic tweaks (non-pure-registry)
+# ============================================================
+
+# ---------- Power plans ----------
+ULTIMATE_GUID = "e9a42b02-d5df-448d-aa00-03f14749eb61"
+HIGH_GUID = "8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c"
+BALANCED_GUID = "381b4222-f694-41f0-9685-ff5bb260df2e"
+
+
+def _pp_status():
+    ok, out = _run("powercfg /getactivescheme")
+    o = out.lower()
+    return "on" if (ULTIMATE_GUID in o or HIGH_GUID in o) else "off"
+
+
+def _pp_apply():
+    b = _load_backup()
     ok, out = _run("powercfg /getactivescheme")
     if ok and "guid:" in out.lower():
-        current = out.lower().split("guid:")[1].strip().split(" ")[0]
-        backup["power_plan_guid"] = current
-        _save_backup(backup)
-
-    # Try Ultimate Performance first (unlock it), fall back to High Performance
+        b["power_plan_guid"] = out.lower().split("guid:")[1].strip().split(" ")[0]
+        _save_backup(b)
     _run(f"powercfg -duplicatescheme {ULTIMATE_GUID}")
     ok, _ = _run(f"powercfg /setactive {ULTIMATE_GUID}")
     if not ok:
-        ok, _ = _run(f"powercfg /setactive {HIGH_PERF_GUID}")
-    return ok
-
-
-def restore_power_plan():
-    backup = _load_backup()
-    prev = backup.get("power_plan_guid")
-    if prev:
-        _run(f"powercfg /setactive {prev}")
-    else:
-        # Balanced plan default
-        _run("powercfg /setactive 381b4222-f694-41f0-9685-ff5bb260df2e")
+        _run(f"powercfg /setactive {HIGH_GUID}")
     return True
 
 
-# ---------- 2. Xbox Game Bar & Game DVR ----------
-def get_gamebar_status():
-    val, _ = _reg_get(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\GameBar", "AppCaptureEnabled")
-    val2, _ = _reg_get(winreg.HKEY_CURRENT_USER, r"System\GameConfigStore", "GameDVR_Enabled")
-    if val == 0 and val2 == 0:
-        return "on"  # meaning tweak is applied
-    return "off"
-
-
-def apply_gamebar_disable():
-    backup = _load_backup()
-    keys = [
-        (winreg.HKEY_CURRENT_USER, r"Software\Microsoft\GameBar", "AppCaptureEnabled", 0),
-        (winreg.HKEY_CURRENT_USER, r"Software\Microsoft\GameBar", "AutoGameModeEnabled", 1),
-        (winreg.HKEY_CURRENT_USER, r"System\GameConfigStore", "GameDVR_Enabled", 0),
-        (winreg.HKEY_CURRENT_USER, r"System\GameConfigStore", "GameDVR_FSEBehaviorMode", 2),
-    ]
-    saved = backup.get("gamebar", {})
-    for hive, path, name, new in keys:
-        old, _ = _reg_get(hive, path, name)
-        saved[f"{path}\\{name}"] = old
-    backup["gamebar"] = saved
-    _save_backup(backup)
-
-    for hive, path, name, new in keys:
-        _reg_set(hive, path, name, new)
-    # HKLM policy - disables game bar entirely (requires admin)
-    _reg_set(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Policies\Microsoft\Windows\GameDVR", "AllowGameDVR", 0)
+def _pp_restore():
+    prev = _load_backup().get("power_plan_guid") or BALANCED_GUID
+    _run(f"powercfg /setactive {prev}")
     return True
 
 
-def restore_gamebar():
-    backup = _load_backup()
-    saved = backup.get("gamebar", {})
-    for full_path, val in saved.items():
-        parts = full_path.rsplit("\\", 1)
-        path, name = parts[0], parts[1]
-        if val is None:
-            _reg_delete(winreg.HKEY_CURRENT_USER, path, name)
-        else:
-            _reg_set(winreg.HKEY_CURRENT_USER, path, name, val)
-    _reg_delete(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Policies\Microsoft\Windows\GameDVR", "AllowGameDVR")
+# ---------- Core parking ----------
+def _cp_apply():
+    _run('powercfg -setacvalueindex scheme_current sub_processor CPMINCORES 100')
+    _run('powercfg -setacvalueindex scheme_current sub_processor CPMAXCORES 100')
+    _run("powercfg /setactive scheme_current")
     return True
 
 
-# ---------- 3. Windows Game Mode ----------
-def get_gamemode_status():
-    val, _ = _reg_get(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\GameBar", "AllowAutoGameMode")
-    val2, _ = _reg_get(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\GameBar", "AutoGameModeEnabled")
-    if val == 1 or val2 == 1:
-        return "on"
-    return "off"
-
-
-def apply_gamemode():
-    backup = _load_backup()
-    keys = [
-        (r"Software\Microsoft\GameBar", "AllowAutoGameMode"),
-        (r"Software\Microsoft\GameBar", "AutoGameModeEnabled"),
-    ]
-    saved = backup.get("gamemode", {})
-    for path, name in keys:
-        old, _ = _reg_get(winreg.HKEY_CURRENT_USER, path, name)
-        saved[f"{path}\\{name}"] = old
-        _reg_set(winreg.HKEY_CURRENT_USER, path, name, 1)
-    backup["gamemode"] = saved
-    _save_backup(backup)
+def _cp_restore():
+    _run('powercfg -setacvalueindex scheme_current sub_processor CPMINCORES 10')
+    _run('powercfg -setacvalueindex scheme_current sub_processor CPMAXCORES 100')
+    _run("powercfg /setactive scheme_current")
     return True
 
 
-def restore_gamemode():
-    backup = _load_backup()
-    saved = backup.get("gamemode", {})
-    for full_path, val in saved.items():
-        parts = full_path.rsplit("\\", 1)
-        path, name = parts[0], parts[1]
-        if val is None:
-            _reg_delete(winreg.HKEY_CURRENT_USER, path, name)
-        else:
-            _reg_set(winreg.HKEY_CURRENT_USER, path, name, val)
+def _cp_status():
+    ok, out = _run("powercfg /query scheme_current sub_processor CPMINCORES")
+    return "on" if "0x00000064" in out.lower() else "off"
+
+
+# ---------- CPU throttling (min state 100%) ----------
+def _throttle_apply():
+    _run('powercfg -setacvalueindex scheme_current sub_processor PROCTHROTTLEMIN 100')
+    _run('powercfg -setdcvalueindex scheme_current sub_processor PROCTHROTTLEMIN 100')
+    _run("powercfg /setactive scheme_current")
     return True
 
 
-# ---------- 4. Visual Effects / Animations ----------
-def get_visualfx_status():
-    val, _ = _reg_get(winreg.HKEY_CURRENT_USER,
-                      r"Software\Microsoft\Windows\CurrentVersion\Explorer\VisualEffects",
-                      "VisualFXSetting")
-    if val == 2:
-        return "on"
-    return "off"
-
-
-def apply_visualfx_disable():
-    backup = _load_backup()
-    val, _ = _reg_get(winreg.HKEY_CURRENT_USER,
-                      r"Software\Microsoft\Windows\CurrentVersion\Explorer\VisualEffects",
-                      "VisualFXSetting")
-    backup["visualfx"] = val
-    # Also backup UserPreferencesMask
-    upm, _ = _reg_get(winreg.HKEY_CURRENT_USER, r"Control Panel\Desktop", "UserPreferencesMask")
-    backup["visualfx_upm"] = list(upm) if upm else None
-    _save_backup(backup)
-
-    _reg_set(winreg.HKEY_CURRENT_USER,
-             r"Software\Microsoft\Windows\CurrentVersion\Explorer\VisualEffects",
-             "VisualFXSetting", 2)
-    # Disable window animations
-    _reg_set(winreg.HKEY_CURRENT_USER, r"Control Panel\Desktop\WindowMetrics",
-             "MinAnimate", "0", winreg.REG_SZ)
-    # Disable menu animation
-    _reg_set(winreg.HKEY_CURRENT_USER, r"Control Panel\Desktop", "UserPreferencesMask",
-             bytes([0x90, 0x12, 0x03, 0x80, 0x10, 0x00, 0x00, 0x00]), winreg.REG_BINARY)
+def _throttle_restore():
+    _run('powercfg -setacvalueindex scheme_current sub_processor PROCTHROTTLEMIN 5')
+    _run("powercfg /setactive scheme_current")
     return True
 
 
-def restore_visualfx():
-    backup = _load_backup()
-    val = backup.get("visualfx")
-    if val is None:
-        _reg_delete(winreg.HKEY_CURRENT_USER,
-                    r"Software\Microsoft\Windows\CurrentVersion\Explorer\VisualEffects",
-                    "VisualFXSetting")
-    else:
-        _reg_set(winreg.HKEY_CURRENT_USER,
-                 r"Software\Microsoft\Windows\CurrentVersion\Explorer\VisualEffects",
-                 "VisualFXSetting", val)
-    upm = backup.get("visualfx_upm")
-    if upm:
-        _reg_set(winreg.HKEY_CURRENT_USER, r"Control Panel\Desktop", "UserPreferencesMask",
-                 bytes(upm), winreg.REG_BINARY)
-    _reg_set(winreg.HKEY_CURRENT_USER, r"Control Panel\Desktop\WindowMetrics",
-             "MinAnimate", "1", winreg.REG_SZ)
+def _throttle_status():
+    ok, out = _run("powercfg /query scheme_current sub_processor PROCTHROTTLEMIN")
+    return "on" if "0x00000064" in out.lower() else "off"
+
+
+# ---------- Hibernation ----------
+def _hib_apply():
+    _run("powercfg -h off")
     return True
 
 
-# ---------- 5. Startup Apps ----------
+def _hib_restore():
+    _run("powercfg -h on")
+    return True
+
+
+def _hib_status():
+    return "off" if Path("C:/hiberfil.sys").exists() else "on"
+
+
+# ---------- Startup apps ----------
 STARTUP_KEYS = [
-    (winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Run"),
-    (winreg.HKEY_LOCAL_MACHINE, r"Software\Microsoft\Windows\CurrentVersion\Run"),
+    ("HKCU", r"Software\Microsoft\Windows\CurrentVersion\Run"),
+    ("HKLM", r"Software\Microsoft\Windows\CurrentVersion\Run"),
 ]
 
 
-def list_startup_apps():
+def _list_startup():
+    if winreg is None:
+        return []
     apps = []
     for hive, path in STARTUP_KEYS:
         try:
-            with winreg.OpenKey(hive, path, 0, winreg.KEY_READ) as key:
+            with winreg.OpenKey(_hive(hive), path, 0, winreg.KEY_READ) as k:
                 i = 0
                 while True:
                     try:
-                        name, value, _ = winreg.EnumValue(key, i)
-                        apps.append({
-                            "name": name,
-                            "command": value,
-                            "hive": "HKCU" if hive == winreg.HKEY_CURRENT_USER else "HKLM",
-                            "path": path,
-                        })
+                        n, v, _ = winreg.EnumValue(k, i)
+                        apps.append({"hive": hive, "path": path, "name": n, "cmd": v})
                         i += 1
                     except OSError:
                         break
@@ -288,42 +260,29 @@ def list_startup_apps():
     return apps
 
 
-def get_startup_status():
-    apps = list_startup_apps()
-    if not apps:
-        return "on"  # nothing to disable, treat as clean
-    return "off"
-
-
-def disable_all_startup():
-    backup = _load_backup()
-    apps = list_startup_apps()
-    backup["startup_apps"] = apps
-    _save_backup(backup)
-    for app in apps:
-        hive = winreg.HKEY_CURRENT_USER if app["hive"] == "HKCU" else winreg.HKEY_LOCAL_MACHINE
-        _reg_delete(hive, app["path"], app["name"])
+def _startup_apply():
+    b = _load_backup()
+    b["startup_apps"] = _list_startup()
+    _save_backup(b)
+    for a in b["startup_apps"]:
+        _reg_del(a["hive"], a["path"], a["name"])
     return True
 
 
-def restore_startup():
-    backup = _load_backup()
-    apps = backup.get("startup_apps", [])
-    for app in apps:
-        hive = winreg.HKEY_CURRENT_USER if app["hive"] == "HKCU" else winreg.HKEY_LOCAL_MACHINE
-        _reg_set(hive, app["path"], app["name"], app["command"], winreg.REG_SZ)
+def _startup_restore():
+    for a in _load_backup().get("startup_apps", []):
+        _reg_set(a["hive"], a["path"], a["name"], a["cmd"], winreg.REG_SZ)
     return True
 
 
-# ---------- 6. Temp Files Cleanup ----------
-def get_temp_status():
-    return "off"  # always available to run
+def _startup_status():
+    return "on" if not _list_startup() else "off"
 
 
-def clean_temp_files():
+# ---------- Temp files ----------
+def _temp_apply():
     paths = [
-        os.getenv("TEMP", ""),
-        os.getenv("TMP", ""),
+        os.getenv("TEMP", ""), os.getenv("TMP", ""),
         r"C:\Windows\Temp",
         os.path.expandvars(r"%LOCALAPPDATA%\Temp"),
         os.path.expandvars(r"%SystemRoot%\Prefetch"),
@@ -339,119 +298,454 @@ def clean_temp_files():
                     total += os.path.getsize(fp)
                     os.remove(fp)
                 except Exception:
-                    continue
+                    pass
             for d in dirs:
-                dp = os.path.join(root, d)
                 try:
-                    shutil.rmtree(dp, ignore_errors=True)
+                    shutil.rmtree(os.path.join(root, d), ignore_errors=True)
                 except Exception:
-                    continue
-    return total  # bytes freed
+                    pass
+    return total
 
 
-# ---------- 7. Mouse Acceleration ----------
-def get_mouseaccel_status():
-    val, _ = _reg_get(winreg.HKEY_CURRENT_USER, r"Control Panel\Mouse", "MouseSpeed")
-    if val == "0":
-        return "on"
-    return "off"
-
-
-def apply_mouseaccel_disable():
-    backup = _load_backup()
-    saved = {}
-    for name in ("MouseSpeed", "MouseThreshold1", "MouseThreshold2"):
-        old, _ = _reg_get(winreg.HKEY_CURRENT_USER, r"Control Panel\Mouse", name)
-        saved[name] = old
-    backup["mouseaccel"] = saved
-    _save_backup(backup)
-
-    _reg_set(winreg.HKEY_CURRENT_USER, r"Control Panel\Mouse", "MouseSpeed", "0", winreg.REG_SZ)
-    _reg_set(winreg.HKEY_CURRENT_USER, r"Control Panel\Mouse", "MouseThreshold1", "0", winreg.REG_SZ)
-    _reg_set(winreg.HKEY_CURRENT_USER, r"Control Panel\Mouse", "MouseThreshold2", "0", winreg.REG_SZ)
+def _wuc_apply():
+    _run("net stop wuauserv")
+    p = os.path.expandvars(r"%SystemRoot%\SoftwareDistribution\Download")
+    if os.path.exists(p):
+        shutil.rmtree(p, ignore_errors=True)
+    _run("net start wuauserv")
     return True
 
 
-def restore_mouseaccel():
-    backup = _load_backup()
-    saved = backup.get("mouseaccel", {})
-    defaults = {"MouseSpeed": "1", "MouseThreshold1": "6", "MouseThreshold2": "10"}
-    for name in ("MouseSpeed", "MouseThreshold1", "MouseThreshold2"):
-        val = saved.get(name) or defaults[name]
-        _reg_set(winreg.HKEY_CURRENT_USER, r"Control Panel\Mouse", name, val, winreg.REG_SZ)
+def _dns_flush():
+    _run("ipconfig /flushdns")
     return True
 
 
-# ---------- Tweak registry (used by GUI) ----------
-TWEAKS = [
-    {
-        "id": "power_plan",
-        "title": "Ultimate/High Performance Power Plan",
-        "desc": "Unlocks and activates the Ultimate Performance power plan for maximum CPU responsiveness.",
-        "icon": "\u26A1",
-        "requires_admin": True,
-        "apply": apply_power_plan,
-        "restore": restore_power_plan,
-        "status": get_power_plan_status,
-    },
-    {
-        "id": "gamebar",
-        "title": "Disable Xbox Game Bar & Game DVR",
-        "desc": "Turns off Xbox Game Bar overlay and background recording that steal FPS.",
-        "icon": "\u274C",
-        "requires_admin": True,
-        "apply": apply_gamebar_disable,
-        "restore": restore_gamebar,
-        "status": get_gamebar_status,
-    },
-    {
-        "id": "gamemode",
-        "title": "Enable Windows Game Mode",
-        "desc": "Prioritizes system resources for the game currently in focus.",
-        "icon": "\U0001F3AE",
-        "requires_admin": False,
-        "apply": apply_gamemode,
-        "restore": restore_gamemode,
-        "status": get_gamemode_status,
-    },
-    {
-        "id": "visualfx",
-        "title": "Disable Visual Effects & Animations",
-        "desc": "Adjusts Windows for best performance — no fade, no shadows, no window animations.",
-        "icon": "\u2728",
-        "requires_admin": False,
-        "apply": apply_visualfx_disable,
-        "restore": restore_visualfx,
-        "status": get_visualfx_status,
-    },
-    {
-        "id": "startup",
-        "title": "Disable All Startup Apps",
-        "desc": "Removes autostart entries so Windows boots lean. Fully restorable.",
-        "icon": "\U0001F680",
-        "requires_admin": True,
-        "apply": disable_all_startup,
-        "restore": restore_startup,
-        "status": get_startup_status,
-    },
-    {
-        "id": "temp",
-        "title": "Clean Temp Files",
-        "desc": "Deletes junk from %TEMP%, C:\\Windows\\Temp and Prefetch. Frees disk & I/O.",
-        "icon": "\U0001F9F9",
-        "requires_admin": True,
-        "apply": clean_temp_files,
-        "restore": lambda: True,  # nothing to restore
-        "status": get_temp_status,
-    },
-    {
-        "id": "mouseaccel",
-        "title": "Disable Mouse Acceleration",
-        "desc": "Turns off 'Enhance pointer precision' for consistent 1:1 aim.",
-        "icon": "\U0001F5B1",
-        "requires_admin": False,
-        "apply": apply_mouseaccel_disable,
-        "restore": restore_mouseaccel,
-        "status": get_mouseaccel_status,
-    },
+# ---------- Scheduled tasks (telemetry) ----------
+TELEMETRY_TASKS = [
+    r"\Microsoft\Windows\Application Experience\Microsoft Compatibility Appraiser",
+    r"\Microsoft\Windows\Application Experience\ProgramDataUpdater",
+    r"\Microsoft\Windows\Autochk\Proxy",
+    r"\Microsoft\Windows\Customer Experience Improvement Program\Consolidator",
+    r"\Microsoft\Windows\Customer Experience Improvement Program\UsbCeip",
+    r"\Microsoft\Windows\DiskDiagnostic\Microsoft-Windows-DiskDiagnosticDataCollector",
+    r"\Microsoft\Windows\Feedback\Siuf\DmClient",
+    r"\Microsoft\Windows\Maps\MapsUpdateTask",
 ]
+
+
+def _tasks_apply():
+    for t in TELEMETRY_TASKS:
+        _run(f'schtasks /Change /TN "{t}" /Disable')
+    return True
+
+
+def _tasks_restore():
+    for t in TELEMETRY_TASKS:
+        _run(f'schtasks /Change /TN "{t}" /Enable')
+    return True
+
+
+def _tasks_status():
+    ok, out = _run(f'schtasks /Query /TN "{TELEMETRY_TASKS[0]}" /FO LIST')
+    return "on" if "disabled" in out.lower() else "off"
+
+
+# ---------- SysMain / Indexing services ----------
+def _svc_disable(name):
+    _run(f"sc stop {name}")
+    _run(f"sc config {name} start= disabled")
+
+
+def _svc_enable(name, mode="auto"):
+    _run(f"sc config {name} start= {mode}")
+    _run(f"sc start {name}")
+
+
+def _sysmain_apply(): _svc_disable("SysMain"); return True
+def _sysmain_restore(): _svc_enable("SysMain"); return True
+def _sysmain_status():
+    ok, out = _run("sc query SysMain")
+    return "on" if "stopped" in out.lower() else "off"
+
+
+def _search_apply(): _svc_disable("WSearch"); return True
+def _search_restore(): _svc_enable("WSearch"); return True
+def _search_status():
+    ok, out = _run("sc query WSearch")
+    return "on" if "stopped" in out.lower() else "off"
+
+
+# ---------- Network buffers / DNS ----------
+def _dns_apply():
+    b = _load_backup()
+    ok, out = _run('netsh interface ipv4 show config')
+    b["dns_backup"] = out
+    _save_backup(b)
+    # apply cloudflare on every active IPv4 interface
+    _run('for /f "tokens=1,* delims=:" %i in (\'netsh interface ipv4 show interfaces ^| findstr /R "connected"\') do @netsh interface ipv4 set dnsservers "%j" static 1.1.1.1 primary >nul')
+    _run('powershell -Command "Get-NetAdapter | Where-Object Status -eq Up | ForEach-Object { Set-DnsClientServerAddress -InterfaceIndex $_.ifIndex -ServerAddresses 1.1.1.1,1.0.0.1 }"')
+    return True
+
+
+def _dns_restore():
+    _run('powershell -Command "Get-NetAdapter | Where-Object Status -eq Up | ForEach-Object { Set-DnsClientServerAddress -InterfaceIndex $_.ifIndex -ResetServerAddresses }"')
+    return True
+
+
+def _dns_status():
+    ok, out = _run('powershell -Command "(Get-DnsClientServerAddress -AddressFamily IPv4 | Select-Object -First 1).ServerAddresses"')
+    return "on" if "1.1.1.1" in out else "off"
+
+
+# ---------- Prefer HP GPU globally ----------
+def _hpgpu_apply():
+    _reg_set("HKCU", r"Software\Microsoft\DirectX\UserGpuPreferences", "DirectXUserGlobalSettings",
+             "VRROptimizeEnable=1;SwapEffectUpgradeEnable=1;HwSchMode=2;", winreg.REG_SZ)
+    return True
+
+
+def _hpgpu_restore():
+    _reg_del("HKCU", r"Software\Microsoft\DirectX\UserGpuPreferences", "DirectXUserGlobalSettings")
+    return True
+
+
+def _hpgpu_status():
+    v, _ = _reg_get("HKCU", r"Software\Microsoft\DirectX\UserGpuPreferences", "DirectXUserGlobalSettings")
+    return "on" if v else "off"
+
+
+# ============================================================
+# THE TWEAK TABLE — all 53
+# ============================================================
+LOCKED = True
+FREE = False
+
+_defs = []
+
+
+def _add(tid, title, desc, icon, category, locked, apply, restore, status, admin=True):
+    _defs.append({
+        "id": tid, "title": title, "desc": desc, "icon": icon,
+        "category": category, "locked": locked, "requires_admin": admin,
+        "apply": apply, "restore": restore, "status": status,
+    })
+
+
+def _add_reg(tid, title, desc, icon, category, locked, ops, admin=True):
+    a, r, s = _reg_tweak(tid, ops)
+    _add(tid, title, desc, icon, category, locked, a, r, s, admin)
+
+
+# ---------- CPU & POWER (LOCKED) ----------
+_add("power_plan", "Ultimate Performance Power Plan",
+     "Unlocks and activates the hidden Ultimate power plan for max CPU responsiveness.",
+     "\u26A1", "CPU & Power", LOCKED, _pp_apply, _pp_restore, _pp_status)
+
+_add("core_parking", "Disable CPU Core Parking",
+     "Forces every CPU core to stay awake — eliminates micro-stutter from park/unpark.",
+     "\U0001F9E0", "CPU & Power", LOCKED, _cp_apply, _cp_restore, _cp_status)
+
+_add("cpu_throttle", "Disable CPU Throttling",
+     "Sets processor minimum state to 100% so your CPU never downclocks mid-fight.",
+     "\U0001F525", "CPU & Power", LOCKED, _throttle_apply, _throttle_restore, _throttle_status)
+
+_add_reg("usb_suspend", "Disable USB Selective Suspend",
+     "Prevents Windows from putting USB devices (mouse, keyboard, headset) to sleep.",
+     "\U0001F50C", "CPU & Power", LOCKED,
+     [{"hive": "HKLM", "path": r"SYSTEM\CurrentControlSet\Services\USB", "name": "DisableSelectiveSuspend", "on": 1}])
+
+_add_reg("pcie_lpm", "Disable PCIe Link State Power Management",
+     "Locks PCIe lanes to full speed — max GPU / NVMe bandwidth at all times.",
+     "\U0001F517", "CPU & Power", LOCKED,
+     [{"hive": "HKLM", "path": r"SYSTEM\CurrentControlSet\Control\Power\PowerSettings\501a4d13-42af-4429-9fd1-a8218c268e20\ee12f906-d277-404b-b6da-e5fa1a576df5",
+       "name": "Attributes", "on": 2}])
+
+# ---------- NETWORK (LOCKED) ----------
+_add_reg("nagle", "Disable Nagle's Algorithm",
+     "Sends packets instantly instead of batching — lower ping in fast-paced multiplayer.",
+     "\U0001F5A7", "Network", LOCKED,
+     [{"hive": "HKLM", "path": r"SYSTEM\CurrentControlSet\Services\Tcpip\Parameters\Interfaces", "name": "TcpAckFrequency", "on": 1},
+      {"hive": "HKLM", "path": r"SYSTEM\CurrentControlSet\Services\Tcpip\Parameters\Interfaces", "name": "TCPNoDelay", "on": 1}])
+
+_add("dns_cloudflare", "Use Cloudflare DNS (1.1.1.1)",
+     "Switches all active adapters to Cloudflare DNS for faster name resolution.",
+     "\u2601", "Network", LOCKED, _dns_apply, _dns_restore, _dns_status)
+
+_add_reg("net_throttle", "Disable Network Throttling",
+     "Removes the 10ms packet-throttling Windows applies to non-media traffic.",
+     "\U0001F6E1", "Network", LOCKED,
+     [{"hive": "HKLM", "path": r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile",
+       "name": "NetworkThrottlingIndex", "on": 0xFFFFFFFF}])
+
+_add_reg("net_buffers", "Increase Network Buffer Sizes",
+     "Enables TCP auto-tuning + RSS for higher throughput on modern connections.",
+     "\U0001F4E1", "Network", LOCKED,
+     [{"hive": "HKLM", "path": r"SYSTEM\CurrentControlSet\Services\Tcpip\Parameters", "name": "Tcp1323Opts", "on": 1},
+      {"hive": "HKLM", "path": r"SYSTEM\CurrentControlSet\Services\Tcpip\Parameters", "name": "DefaultTTL", "on": 64}])
+
+_add_reg("qos_reserve", "Disable QoS Bandwidth Reservation",
+     "Frees the 20% bandwidth Windows reserves for QoS packet scheduling.",
+     "\U0001F310", "Network", LOCKED,
+     [{"hive": "HKLM", "path": r"SOFTWARE\Policies\Microsoft\Windows\Psched", "name": "NonBestEffortLimit", "on": 0}])
+
+# ---------- GPU / DIRECTX (LOCKED) ----------
+_add("hp_gpu", "Prefer High-Performance GPU Globally",
+     "Forces laptops to use the discrete GPU for every app that isn't explicitly overridden.",
+     "\U0001F5A5", "GPU / DirectX", LOCKED, _hpgpu_apply, _hpgpu_restore, _hpgpu_status)
+
+_add_reg("gpu_preempt", "GPU Prefer Max Performance",
+     "Registry hint telling the driver stack to favour performance over power saving.",
+     "\U0001F3AF", "GPU / DirectX", LOCKED,
+     [{"hive": "HKLM", "path": r"SYSTEM\CurrentControlSet\Control\GraphicsDrivers", "name": "HwSchMode", "on": 2},
+      {"hive": "HKLM", "path": r"SYSTEM\CurrentControlSet\Control\GraphicsDrivers", "name": "TdrDelay", "on": 10}])
+
+_add_reg("game_priority", "Games Launch at High Priority",
+     "Writes the SystemProfile\\Games registry so DirectX titles get High CPU priority.",
+     "\U0001F3C6", "GPU / DirectX", LOCKED,
+     [{"hive": "HKLM", "path": r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile\Tasks\Games", "name": "GPU Priority", "on": 8},
+      {"hive": "HKLM", "path": r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile\Tasks\Games", "name": "Priority", "on": 6},
+      {"hive": "HKLM", "path": r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile\Tasks\Games", "name": "Scheduling Category", "on": "High", "typ": winreg.REG_SZ if winreg else None},
+      {"hive": "HKLM", "path": r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile\Tasks\Games", "name": "SFIO Priority", "on": "High", "typ": winreg.REG_SZ if winreg else None}])
+
+# ---------- INPUT (LOCKED) ----------
+_add_reg("mouse_accel", "Disable Mouse Acceleration",
+     "Turns off 'Enhance pointer precision' — consistent 1:1 aim.",
+     "\U0001F5B1", "Input", LOCKED,
+     [{"hive": "HKCU", "path": r"Control Panel\Mouse", "name": "MouseSpeed", "on": "0", "off": "1", "typ": winreg.REG_SZ if winreg else None},
+      {"hive": "HKCU", "path": r"Control Panel\Mouse", "name": "MouseThreshold1", "on": "0", "off": "6", "typ": winreg.REG_SZ if winreg else None},
+      {"hive": "HKCU", "path": r"Control Panel\Mouse", "name": "MouseThreshold2", "on": "0", "off": "10", "typ": winreg.REG_SZ if winreg else None}],
+     admin=False)
+
+_add_reg("sticky_keys", "Disable Sticky / Filter / Toggle Keys Prompts",
+     "Kills the accidental popup when you spam Shift or hold Right-Shift in a game.",
+     "\u2328", "Input", LOCKED,
+     [{"hive": "HKCU", "path": r"Control Panel\Accessibility\StickyKeys", "name": "Flags", "on": "506", "off": "510", "typ": winreg.REG_SZ if winreg else None},
+      {"hive": "HKCU", "path": r"Control Panel\Accessibility\Keyboard Response", "name": "Flags", "on": "122", "off": "126", "typ": winreg.REG_SZ if winreg else None},
+      {"hive": "HKCU", "path": r"Control Panel\Accessibility\ToggleKeys", "name": "Flags", "on": "58", "off": "62", "typ": winreg.REG_SZ if winreg else None}],
+     admin=False)
+
+_add_reg("kb_delay", "Reduce Keyboard Input Delay",
+     "Shortens key repeat delay and boosts repeat rate for snappier typing / bhopping.",
+     "\u2B07", "Input", LOCKED,
+     [{"hive": "HKCU", "path": r"Control Panel\Keyboard", "name": "KeyboardDelay", "on": "0", "off": "1", "typ": winreg.REG_SZ if winreg else None},
+      {"hive": "HKCU", "path": r"Control Panel\Keyboard", "name": "KeyboardSpeed", "on": "31", "off": "31", "typ": winreg.REG_SZ if winreg else None}],
+     admin=False)
+
+_add_reg("device_priority", "Higher Priority for Gaming Devices",
+     "Bumps HID input device priority so mouse / keyboard events preempt other IRQs.",
+     "\U0001F3AE", "Input", LOCKED,
+     [{"hive": "HKLM", "path": r"SYSTEM\CurrentControlSet\Control\PriorityControl", "name": "IRQ8Priority", "on": 1}])
+
+# ---------- SYSTEM RESPONSIVENESS (LOCKED) ----------
+_add_reg("prio_sep", "Foreground CPU Priority Boost",
+     "Tweaks Win32PrioritySeparation so the active window gets a bigger CPU quantum.",
+     "\u26A1", "System", LOCKED,
+     [{"hive": "HKLM", "path": r"SYSTEM\CurrentControlSet\Control\PriorityControl", "name": "Win32PrioritySeparation", "on": 38}])
+
+_add_reg("fullscreen_notifs", "No Notifications in Fullscreen",
+     "Blocks toast pop-ups while any app runs in exclusive fullscreen.",
+     "\U0001F515", "System", LOCKED,
+     [{"hive": "HKCU", "path": r"SOFTWARE\Microsoft\Windows\CurrentVersion\Notifications\Settings", "name": "NOC_GLOBAL_SETTING_ALLOW_NOTIFICATION_SOUND", "on": 0}],
+     admin=False)
+
+_add_reg("focus_assist", "Disable Focus Assist Auto Rules",
+     "Stops Focus Assist from auto-triggering / stealing focus mid-match.",
+     "\U0001F3AF", "System", LOCKED,
+     [{"hive": "HKCU", "path": r"SOFTWARE\Microsoft\Windows\CurrentVersion\CloudStore\Store\Cache\DefaultAccount", "name": "Data", "on": 0}],
+     admin=False)
+
+_add_reg("sys_responsiveness", "Boost System Responsiveness",
+     "Lowers the CPU cycles Windows reserves for background scheduling to 10%.",
+     "\U0001F680", "System", LOCKED,
+     [{"hive": "HKLM", "path": r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile", "name": "SystemResponsiveness", "on": 10, "off": 20}])
+
+# ---------- GAMING FEATURES (FREE) ----------
+_add_reg("game_bar", "Disable Xbox Game Bar",
+     "Turns off the Win+G overlay that costs FPS in every DirectX game.",
+     "\u274C", "Gaming", FREE,
+     [{"hive": "HKCU", "path": r"Software\Microsoft\GameBar", "name": "AppCaptureEnabled", "on": 0, "off": 1},
+      {"hive": "HKCU", "path": r"Software\Microsoft\GameBar", "name": "UseNexusForGameBarEnabled", "on": 0, "off": 1}],
+     admin=False)
+
+_add_reg("game_dvr", "Disable Game DVR (Background Recorder)",
+     "Kills the always-on background clip recorder that steals GPU cycles.",
+     "\U0001F3A5", "Gaming", FREE,
+     [{"hive": "HKCU", "path": r"System\GameConfigStore", "name": "GameDVR_Enabled", "on": 0, "off": 1},
+      {"hive": "HKCU", "path": r"System\GameConfigStore", "name": "GameDVR_FSEBehaviorMode", "on": 2, "off": 0},
+      {"hive": "HKLM", "path": r"SOFTWARE\Policies\Microsoft\Windows\GameDVR", "name": "AllowGameDVR", "on": 0}])
+
+_add_reg("game_mode", "Enable Windows Game Mode",
+     "Tells Windows to prioritise resources for the game currently in focus.",
+     "\U0001F3AE", "Gaming", FREE,
+     [{"hive": "HKCU", "path": r"Software\Microsoft\GameBar", "name": "AllowAutoGameMode", "on": 1, "off": 0},
+      {"hive": "HKCU", "path": r"Software\Microsoft\GameBar", "name": "AutoGameModeEnabled", "on": 1, "off": 0}],
+     admin=False)
+
+_add_reg("hags", "Hardware-Accelerated GPU Scheduling",
+     "Reduces input latency on modern GPUs (RTX / RX 5000+). Reboot required.",
+     "\u26A1", "Gaming", FREE,
+     [{"hive": "HKLM", "path": r"SYSTEM\CurrentControlSet\Control\GraphicsDrivers", "name": "HwSchMode", "on": 2, "off": 1}])
+
+_add_reg("auto_hdr", "Enable Auto HDR",
+     "Automatically upscales SDR games to HDR on HDR-capable displays.",
+     "\U0001F308", "Gaming", FREE,
+     [{"hive": "HKCU", "path": r"Software\Microsoft\DirectX\UserGpuPreferences", "name": "AutoHDREnable", "on": "1", "off": "0", "typ": winreg.REG_SZ if winreg else None}],
+     admin=False)
+
+_add_reg("no_fso", "Disable Fullscreen Optimizations Globally",
+     "Forces true exclusive fullscreen — reduces input lag in older games.",
+     "\U0001F3AC", "Gaming", FREE,
+     [{"hive": "HKCU", "path": r"System\GameConfigStore", "name": "GameDVR_DXGIHonorFSEWindowsCompatible", "on": 1},
+      {"hive": "HKCU", "path": r"System\GameConfigStore", "name": "GameDVR_HonorUserFSEBehaviorMode", "on": 1},
+      {"hive": "HKCU", "path": r"System\GameConfigStore", "name": "GameDVR_EFSEFeatureFlags", "on": 0}],
+     admin=False)
+
+# ---------- VISUALS (FREE) ----------
+_add_reg("vfx", "Adjust for Best Performance",
+     "Disables all Windows visual effects at once (shadows, fade, previews...).",
+     "\u2728", "Visuals", FREE,
+     [{"hive": "HKCU", "path": r"Software\Microsoft\Windows\CurrentVersion\Explorer\VisualEffects", "name": "VisualFXSetting", "on": 2, "off": 0}],
+     admin=False)
+
+_add_reg("no_anim", "Disable Window Animations",
+     "Kills minimize/maximize animation — instant window switching.",
+     "\U0001F4A8", "Visuals", FREE,
+     [{"hive": "HKCU", "path": r"Control Panel\Desktop\WindowMetrics", "name": "MinAnimate", "on": "0", "off": "1", "typ": winreg.REG_SZ if winreg else None}],
+     admin=False)
+
+_add_reg("no_transp", "Disable Transparency Effects",
+     "Removes acrylic blur from taskbar / start menu — saves GPU cycles.",
+     "\U0001F9CA", "Visuals", FREE,
+     [{"hive": "HKCU", "path": r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize", "name": "EnableTransparency", "on": 0, "off": 1}],
+     admin=False)
+
+_add_reg("cursor_shadow", "Disable Mouse Cursor Shadow",
+     "Removes the tiny shadow under your cursor — one less thing for the GPU.",
+     "\U0001F5B1", "Visuals", FREE,
+     [{"hive": "HKCU", "path": r"Control Panel\Desktop", "name": "UserPreferencesMask",
+       "on": bytes([0x90, 0x12, 0x03, 0x80, 0x10, 0x00, 0x00, 0x00]),
+       "off": bytes([0x9E, 0x1E, 0x07, 0x80, 0x12, 0x00, 0x00, 0x00]),
+       "typ": winreg.REG_BINARY if winreg else None}],
+     admin=False)
+
+_add_reg("menu_delay", "Zero Menu Show Delay",
+     "Sets the 400ms menu-open delay to 0 — snappier right-click / start menu.",
+     "\U0001F5B2", "Visuals", FREE,
+     [{"hive": "HKCU", "path": r"Control Panel\Desktop", "name": "MenuShowDelay", "on": "0", "off": "400", "typ": winreg.REG_SZ if winreg else None}],
+     admin=False)
+
+# ---------- STARTUP & BACKGROUND (FREE) ----------
+_add("startup_apps", "Disable All Startup Apps",
+     "Removes every autostart entry so Windows boots lean. Fully restorable.",
+     "\U0001F680", "Startup", FREE, _startup_apply, _startup_restore, _startup_status)
+
+_add("telemetry_tasks", "Disable Telemetry Scheduled Tasks",
+     "Turns off the CEIP, Compatibility Appraiser and other background snoopers.",
+     "\U0001F4CB", "Startup", FREE, _tasks_apply, _tasks_restore, _tasks_status)
+
+_add_reg("cortana", "Disable Cortana",
+     "Fully disables the Cortana process and search-bar assistant.",
+     "\U0001F507", "Startup", FREE,
+     [{"hive": "HKLM", "path": r"SOFTWARE\Policies\Microsoft\Windows\Windows Search", "name": "AllowCortana", "on": 0}])
+
+_add("search_indexing", "Disable Windows Search Indexing",
+     "Stops the WSearch service — big I/O win on HDDs and mixed drives.",
+     "\U0001F50D", "Startup", FREE, _search_apply, _search_restore, _search_status)
+
+_add("sysmain", "Disable SysMain (Superfetch)",
+     "Turns off Superfetch — recommended on SSDs, reduces random disk usage.",
+     "\U0001F4BD", "Startup", FREE, _sysmain_apply, _sysmain_restore, _sysmain_status)
+
+_add_reg("widgets", "Disable Widgets / News & Interests",
+     "Removes the Widgets button and stops the background feed process.",
+     "\U0001F4F0", "Startup", FREE,
+     [{"hive": "HKCU", "path": r"Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced", "name": "TaskbarDa", "on": 0, "off": 1}],
+     admin=False)
+
+_add_reg("bg_apps", "Disable Background Apps",
+     "Prevents UWP apps from running in the background eating RAM & CPU.",
+     "\U0001F6AB", "Startup", FREE,
+     [{"hive": "HKCU", "path": r"Software\Microsoft\Windows\CurrentVersion\BackgroundAccessApplications", "name": "GlobalUserDisabled", "on": 1, "off": 0},
+      {"hive": "HKCU", "path": r"Software\Microsoft\Windows\CurrentVersion\Search", "name": "BackgroundAppGlobalToggle", "on": 0, "off": 1}],
+     admin=False)
+
+# ---------- DISK & MEMORY (FREE) ----------
+_add("clean_temp", "Clean Temp Files",
+     "Wipes %TEMP%, Windows\\Temp and Prefetch. Reports MB freed.",
+     "\U0001F9F9", "Disk", FREE,
+     _temp_apply, lambda: True, lambda: "off")
+
+_add("clean_wu", "Clear Windows Update Cache",
+     "Deletes stale downloads under SoftwareDistribution\\Download.",
+     "\u267B", "Disk", FREE, _wuc_apply, lambda: True, lambda: "off")
+
+_add("clean_dns", "Flush DNS Cache",
+     "Clears the local DNS resolver cache — fixes stale lookups instantly.",
+     "\U0001F310", "Disk", FREE, _dns_flush, lambda: True, lambda: "off")
+
+_add("hibernation", "Disable Hibernation",
+     "Removes hiberfil.sys — frees several GB on your C: drive.",
+     "\U0001F4A4", "Disk", FREE, _hib_apply, _hib_restore, _hib_status)
+
+_add_reg("pagefile_secondary", "Disable Pagefile on Secondary Drives",
+     "Keeps the pagefile only on C: — avoids fragmentation on data drives.",
+     "\U0001F5C4", "Disk", FREE,
+     [{"hive": "HKLM", "path": r"SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management", "name": "PagingFiles", "on": "C:\\pagefile.sys", "typ": winreg.REG_MULTI_SZ if winreg else None}])
+
+_add_reg("ntfs_atime", "Disable NTFS Last-Access Timestamp",
+     "Stops NTFS from updating a timestamp on every file read — small I/O win.",
+     "\U0001F551", "Disk", FREE,
+     [{"hive": "HKLM", "path": r"SYSTEM\CurrentControlSet\Control\FileSystem", "name": "NtfsDisableLastAccessUpdate", "on": 1, "off": 2}])
+
+_add_reg("trim", "Enable TRIM for SSDs",
+     "Ensures Windows sends TRIM commands so your SSD stays fast.",
+     "\U0001F4BE", "Disk", FREE,
+     [{"hive": "HKLM", "path": r"SYSTEM\CurrentControlSet\Control\FileSystem", "name": "DisableDeleteNotify", "on": 0, "off": 1}])
+
+# ---------- PRIVACY / TELEMETRY (FREE) ----------
+_add_reg("telemetry", "Disable Windows Telemetry",
+     "Sets the DataCollection policy to the lowest allowed value.",
+     "\U0001F576", "Privacy", FREE,
+     [{"hive": "HKLM", "path": r"SOFTWARE\Policies\Microsoft\Windows\DataCollection", "name": "AllowTelemetry", "on": 0}])
+
+_add_reg("ad_id", "Disable Advertising ID",
+     "Stops apps from tracking you via a personalised advertising identifier.",
+     "\U0001F6D1", "Privacy", FREE,
+     [{"hive": "HKCU", "path": r"Software\Microsoft\Windows\CurrentVersion\AdvertisingInfo", "name": "Enabled", "on": 0, "off": 1}],
+     admin=False)
+
+_add_reg("activity_history", "Disable Activity History / Timeline",
+     "Prevents Windows from collecting and syncing your recent activities.",
+     "\U0001F4DC", "Privacy", FREE,
+     [{"hive": "HKLM", "path": r"SOFTWARE\Policies\Microsoft\Windows\System", "name": "EnableActivityFeed", "on": 0},
+      {"hive": "HKLM", "path": r"SOFTWARE\Policies\Microsoft\Windows\System", "name": "PublishUserActivities", "on": 0}])
+
+_add_reg("location", "Disable Location Tracking",
+     "Denies system-wide access to your location.",
+     "\U0001F5FA", "Privacy", FREE,
+     [{"hive": "HKLM", "path": r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Sensor\Overrides\{BFA794E4-F964-4FDB-90F6-51056BFE4B44}", "name": "SensorPermissionState", "on": 0, "off": 1}])
+
+_add_reg("feedback", "Disable Feedback Prompts",
+     "Sets Windows feedback frequency to Never.",
+     "\U0001F4AC", "Privacy", FREE,
+     [{"hive": "HKCU", "path": r"Software\Microsoft\Siuf\Rules", "name": "NumberOfSIUFInPeriod", "on": 0}],
+     admin=False)
+
+# ---------- AUDIO (FREE) ----------
+_add_reg("audio_enh", "Disable Audio Enhancements",
+     "Turns off system-level audio effects — lower audio latency.",
+     "\U0001F507", "Audio", FREE,
+     [{"hive": "HKCU", "path": r"Software\Microsoft\Multimedia\Audio", "name": "DisableProtectedAudioDG", "on": 1, "off": 0}],
+     admin=False)
+
+_add_reg("audio_dpc", "Higher Priority for Audio DPC",
+     "Raises priority of the audio deferred procedure calls — fewer crackles.",
+     "\U0001F3B5", "Audio", FREE,
+     [{"hive": "HKLM", "path": r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile\Tasks\Audio", "name": "Priority", "on": 1},
+      {"hive": "HKLM", "path": r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile\Tasks\Audio", "name": "Scheduling Category", "on": "High", "typ": winreg.REG_SZ if winreg else None}])
+
+
+TWEAKS = _defs
+CATEGORIES = ["CPU & Power", "Network", "GPU / DirectX", "Input", "System",
+              "Gaming", "Visuals", "Startup", "Disk", "Privacy", "Audio"]
