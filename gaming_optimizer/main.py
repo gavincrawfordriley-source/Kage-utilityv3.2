@@ -413,6 +413,14 @@ class App(ctk.CTk):
             font=("Rajdhani", 13, "bold"), height=40, corner_radius=10, width=140,
         ).pack(side="left", padx=(8, 0))
 
+        # Reboot button - critical for tweaks that need reboot to take effect
+        ctk.CTkButton(
+            actions, text="\U0001F504  REBOOT",
+            command=self._reboot_prompt,
+            fg_color="#242a33", hover_color="#3d2865", text_color=t["ACCENT"],
+            font=("Rajdhani", 13, "bold"), height=40, corner_radius=10, width=120,
+        ).pack(side="left", padx=(8, 0))
+
         if not is_admin():
             ctk.CTkButton(
                 actions, text="\U0001F510  RUN AS ADMIN",
@@ -420,6 +428,30 @@ class App(ctk.CTk):
                 fg_color=t["DANGER"], hover_color="#c44660", text_color="#150507",
                 font=("Rajdhani", 13, "bold"), height=40, corner_radius=10, width=160,
             ).pack(side="right")
+
+        # ---------- Info banner: how to verify tweaks ----------
+        info = ctk.CTkFrame(self, fg_color="#0f1a24",
+                            corner_radius=10, border_width=1,
+                            border_color=t["ACCENT_DIM"])
+        info.pack(fill="x", padx=28, pady=(4, 6))
+        info.grid_columnconfigure(1, weight=1)
+        ctk.CTkLabel(info, text="\u2139",
+                     font=("Segoe UI Emoji", 18),
+                     text_color=t["ACCENT"], width=32).grid(row=0, column=0,
+                                                            rowspan=2, padx=(12, 4), pady=8)
+        ctk.CTkLabel(
+            info, text="How to know a tweak really applied",
+            font=("Rajdhani", 13, "bold"),
+            text_color=t["ACCENT"], anchor="w",
+        ).grid(row=0, column=1, sticky="w", pady=(8, 0))
+        ctk.CTkLabel(
+            info,
+            text="If a tweak's switch turns ON and stays ON, the registry change succeeded. "
+                 "Many tweaks are INVISIBLE in Windows Settings (they work at a lower level for games / drivers). "
+                 "For power plans, visual effects, and Game Bar \u2192 REBOOT to see the change in Windows.",
+            font=("Inter", 11), text_color=t["MUTED"],
+            anchor="w", justify="left", wraplength=820,
+        ).grid(row=1, column=1, sticky="w", pady=(0, 10))
 
         # ---------- Tabs: Free / Premium ----------
         self.tabview = ctk.CTkTabview(
@@ -628,6 +660,22 @@ class App(ctk.CTk):
             on_theme_change=self._on_theme_change,
             on_profile_apply=self._apply_profile_ids,
         )
+
+    def _reboot_prompt(self):
+        if messagebox.askyesno(
+            "Reboot PC",
+            "Reboot now so all applied tweaks fully take effect?\n\n"
+            "Save any open work first. Windows will restart in 10 seconds."
+        ):
+            try:
+                import subprocess
+                subprocess.Popen(
+                    ["shutdown", "/r", "/t", "10", "/c", "Kage Utility — applying tweaks"],
+                    creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
+                )
+                self.set_status("\U0001F504  Rebooting in 10 seconds...", self.theme["ACCENT"])
+            except Exception as e:
+                self.set_status(f"\u2717 Reboot failed: {e}", self.theme["DANGER"])
 
     def _on_theme_change(self, name):
         self.theme_name = name
