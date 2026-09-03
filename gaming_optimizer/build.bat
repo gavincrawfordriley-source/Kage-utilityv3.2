@@ -42,9 +42,12 @@ python -m PyInstaller ^
   --add-data "bg.png;." ^
   --add-data "whoosh.wav;." ^
   --add-data "voice.wav;." ^
+  --add-data "kage_max_performance.nip;." ^
   --collect-all customtkinter ^
   --hidden-import pystray._win32 ^
   --hidden-import pypresence ^
+  --hidden-import psutil ^
+  --hidden-import wmi ^
   main.py
 
 if not exist dist\KageUtility.exe (

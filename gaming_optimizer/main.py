@@ -386,12 +386,12 @@ class App(ctk.CTk):
                      text_color=t["ACCENT"]).grid(row=0, column=0, rowspan=2,
                                                   padx=(0, 12), sticky="w")
 
-        ctk.CTkLabel(header, text=APP_NAME,
+        ctk.CTkLabel(header, text="P+S",
                      font=("Rajdhani", 32, "bold"),
                      text_color=t["TEXT"], anchor="w").grid(row=0, column=1, sticky="sw")
 
         ctk.CTkLabel(header,
-                     text="53 Windows 10/11 tweaks \u2014 fully reversible.   \u5F71  Move like a shadow.",
+                     text="Gaming Lounge  \u2014  63 Windows tweaks, fully reversible.   \u5F71  Move like a shadow.",
                      font=("Inter", 11), text_color=t["MUTED"],
                      anchor="w").grid(row=1, column=1, sticky="nw")
 
@@ -578,17 +578,23 @@ class App(ctk.CTk):
         free_count = sum(1 for tw in TWEAKS if not tw["locked"])
         prem_count = sum(1 for tw in TWEAKS if tw["locked"] and not tw.get("partner_only"))
         part_count = sum(1 for tw in TWEAKS if tw.get("partner_only"))
+        home_tab_name = "\U0001F3E0  HOME"
         free_tab_name = f"\u26A1  FREE  ({free_count})"
         prem_tab_name = f"\u2605  PREMIUM  ({prem_count})"
         part_tab_name = f"\U0001F91D  PARTNER  ({part_count})"
+        self.tabview.add(home_tab_name)
         self.tabview.add(free_tab_name)
         self.tabview.add(prem_tab_name)
         # Partner tab only if this PC has partner or owner
         if is_partner():
             self.tabview.add(part_tab_name)
+        self._home_tab_name = home_tab_name
         self._free_tab_name = free_tab_name
         self._prem_tab_name = prem_tab_name
         self._part_tab_name = part_tab_name
+
+        # Home tab: live system stats
+        self._build_home_tab(self.tabview.tab(home_tab_name))
 
         # Scrollable frames inside each tab — TRANSPARENT so custom backgrounds show through
         self.scroll_free = ctk.CTkScrollableFrame(
@@ -615,6 +621,207 @@ class App(ctk.CTk):
                                        font=("Inter", 11),
                                        text_color=t["MUTED"], anchor="w")
         self.status_bar.pack(fill="x", padx=20, pady=(0, 6))
+
+    def _build_home_tab(self, parent):
+        """Home dashboard with live CPU/GPU/RAM stats."""
+        import system_monitor
+        t = self.theme
+
+        wrap = ctk.CTkFrame(parent, fg_color="transparent")
+        wrap.pack(fill="both", expand=True, padx=6, pady=(8, 6))
+        wrap.grid_columnconfigure((0, 1, 2), weight=1)
+
+        # Save refs so we can update them
+        self._home_labels = {}
+
+        def make_stat_card(col, key, title, unit_suffix, ring_color):
+            card = ctk.CTkFrame(wrap, fg_color=t["CARD"], corner_radius=14,
+                                border_width=1, border_color=t["BORDER"])
+            card.grid(row=0, column=col, padx=6, pady=6, sticky="nsew")
+
+            ctk.CTkLabel(card, text=title,
+                         font=("Rajdhani", 12, "bold"),
+                         text_color=t["MUTED"], anchor="w").pack(anchor="w", padx=16, pady=(12, 0))
+
+            big = ctk.CTkLabel(card, text="--",
+                               font=("Rajdhani", 34, "bold"),
+                               text_color=ring_color)
+            big.pack(anchor="w", padx=16, pady=(0, 4))
+
+            bar = ctk.CTkProgressBar(card, height=8, corner_radius=4,
+                                     progress_color=ring_color,
+                                     fg_color=t["BORDER"])
+            bar.set(0)
+            bar.pack(fill="x", padx=16, pady=(0, 8))
+
+            sub = ctk.CTkLabel(card, text=unit_suffix,
+                               font=("Inter", 10),
+                               text_color=t["MUTED"], anchor="w")
+            sub.pack(anchor="w", padx=16, pady=(0, 12))
+
+            self._home_labels[key] = (big, bar, sub)
+
+        make_stat_card(0, "cpu", "\u26A1  CPU USAGE",     "\u2014",  t["ACCENT"])
+        make_stat_card(1, "gpu", "\U0001F3AE  GPU USAGE", "\u2014",  "#ff5a7c")
+        make_stat_card(2, "ram", "\U0001F4BE  RAM USAGE", "\u2014",  t["GOLD"])
+
+        # Temperature Row
+        temp_row = ctk.CTkFrame(wrap, fg_color=t["CARD"], corner_radius=14,
+                                border_width=1, border_color=t["BORDER"])
+        temp_row.grid(row=1, column=0, columnspan=3, padx=6, pady=(4, 8), sticky="ew")
+        temp_row.grid_columnconfigure((0, 1), weight=1)
+
+        ctk.CTkLabel(temp_row, text="\U0001F321  TEMPERATURE MONITOR",
+                     font=("Rajdhani", 13, "bold"),
+                     text_color=t["MUTED"], anchor="w").grid(row=0, column=0, columnspan=2,
+                                                             padx=16, pady=(10, 4), sticky="w")
+        cpu_t = ctk.CTkLabel(temp_row, text="CPU:  \u2014",
+                             font=("Rajdhani", 22, "bold"),
+                             text_color=t["ACCENT"])
+        cpu_t.grid(row=1, column=0, padx=16, pady=(0, 12), sticky="w")
+        gpu_t = ctk.CTkLabel(temp_row, text="GPU:  \u2014",
+                             font=("Rajdhani", 22, "bold"),
+                             text_color="#ff5a7c")
+        gpu_t.grid(row=1, column=1, padx=16, pady=(0, 12), sticky="w")
+        self._home_labels["cpu_temp"] = cpu_t
+        self._home_labels["gpu_temp"] = gpu_t
+
+        # NVIDIA Profile Inspector partner card (only for partners)
+        if is_partner():
+            import nvidia_inspector
+            nv_card = ctk.CTkFrame(wrap, fg_color="#0d2a26", corner_radius=14,
+                                   border_width=1, border_color="#2dd4bf")
+            nv_card.grid(row=2, column=0, columnspan=3, padx=6, pady=(4, 8), sticky="ew")
+
+            ctk.CTkLabel(nv_card,
+                         text="\U0001F3AE  NVIDIA PROFILE INSPECTOR  \u2014  Partner Auto-Optimize",
+                         font=("Rajdhani", 14, "bold"),
+                         text_color="#2dd4bf", anchor="w").pack(anchor="w", padx=16, pady=(12, 2))
+
+            found = nvidia_inspector.find_inspector()
+            if found:
+                info_text = f"Detected: {found}\nWe'll silently apply the Kage max-performance NVIDIA profile."
+                nv_msg_color = t["MUTED"]
+            else:
+                info_text = ("Not found. Download from "
+                             "https://github.com/Orbmu2k/nvidiaProfileInspector "
+                             "and put it in Desktop or Downloads, then click detect.")
+                nv_msg_color = t["MUTED"]
+
+            self._nv_status = ctk.CTkLabel(nv_card, text=info_text,
+                                           font=("Inter", 10), text_color=nv_msg_color,
+                                           justify="left", anchor="w", wraplength=800)
+            self._nv_status.pack(anchor="w", padx=16, pady=(0, 8))
+
+            bar = ctk.CTkFrame(nv_card, fg_color="#0d2a26")
+            bar.pack(anchor="w", padx=16, pady=(0, 14))
+
+            ctk.CTkButton(
+                bar, text="\U0001F50D  RE-DETECT",
+                command=self._nv_detect,
+                fg_color="#242a33", hover_color="#2f3742",
+                text_color=t["TEXT"], font=("Rajdhani", 12, "bold"),
+                height=32, corner_radius=8, width=130,
+            ).pack(side="left", padx=(0, 6))
+
+            ctk.CTkButton(
+                bar, text="\u26A1  APPLY OPTIMIZED PROFILE",
+                command=self._nv_apply,
+                fg_color="#2dd4bf", hover_color="#14b8a6", text_color="#053b32",
+                font=("Rajdhani", 12, "bold"),
+                height=32, corner_radius=8, width=220,
+            ).pack(side="left", padx=(0, 6))
+
+            ctk.CTkButton(
+                bar, text="OPEN GUI",
+                command=self._nv_launch_gui,
+                fg_color="#242a33", hover_color="#2f3742",
+                text_color=t["TEXT"], font=("Rajdhani", 12, "bold"),
+                height=32, corner_radius=8, width=110,
+            ).pack(side="left")
+
+        # Start the live update loop
+        self._tick_home()
+
+    def _tick_home(self):
+        """Update home tab stats every 1500ms."""
+        try:
+            import system_monitor
+            snap = system_monitor.snapshot()
+
+            cpu_big, cpu_bar, cpu_sub = self._home_labels["cpu"]
+            cpu_big.configure(text=f"{snap['cpu_pct']:.0f}%")
+            cpu_bar.set(snap["cpu_pct"] / 100)
+            cpu_sub.configure(text="Overall load")
+
+            gpu_big, gpu_bar, gpu_sub = self._home_labels["gpu"]
+            if snap["gpu_present"]:
+                gpu_big.configure(text=f"{snap['gpu_pct']:.0f}%")
+                gpu_bar.set(snap["gpu_pct"] / 100)
+                gpu_sub.configure(text="NVIDIA GPU")
+            else:
+                gpu_big.configure(text="\u2014")
+                gpu_bar.set(0)
+                gpu_sub.configure(text="No NVIDIA GPU detected")
+
+            ram_big, ram_bar, ram_sub = self._home_labels["ram"]
+            ram_big.configure(text=f"{snap['ram_pct']:.0f}%")
+            ram_bar.set(snap["ram_pct"] / 100)
+            ram_sub.configure(text=f"{snap['ram_used_gb']:.1f} GB / {snap['ram_total_gb']:.1f} GB")
+
+            ct = snap["cpu_temp"]
+            self._home_labels["cpu_temp"].configure(
+                text=f"CPU:  {ct:.0f}\u00B0C" if ct is not None else "CPU:  n/a"
+            )
+            gt = snap["gpu_temp"]
+            self._home_labels["gpu_temp"].configure(
+                text=f"GPU:  {gt:.0f}\u00B0C" if gt is not None else "GPU:  n/a"
+            )
+        except Exception:
+            pass
+        self.after(1500, self._tick_home)
+
+    def _nv_detect(self):
+        import nvidia_inspector
+        found = nvidia_inspector.find_inspector()
+        if found:
+            self._nv_status.configure(
+                text=f"Detected: {found}",
+                text_color=self.theme["ACCENT"],
+            )
+        else:
+            self._nv_status.configure(
+                text="Still not found. Put nvidiaProfileInspector.exe in Desktop or Downloads and click detect again.",
+                text_color=self.theme["DANGER"],
+            )
+
+    def _nv_apply(self):
+        import nvidia_inspector
+        found = nvidia_inspector.find_inspector()
+        if not found:
+            messagebox.showwarning(
+                "Not installed",
+                "nvidiaProfileInspector.exe not found. Download it and put it in Desktop or Downloads."
+            )
+            return
+        if not messagebox.askyesno(
+            "Apply optimized NVIDIA profile",
+            "Apply the Kage max-performance NVIDIA driver profile globally?\n\n"
+            "Includes: Prefer Max Performance, Threaded Optimization ON, "
+            "Low Latency ULTRA, Shader Cache Unlimited, VSync OFF."
+        ):
+            return
+        ok, msg = nvidia_inspector.apply_optimized(found)
+        self.set_status(msg, self.theme["ACCENT"] if ok else self.theme["DANGER"])
+
+    def _nv_launch_gui(self):
+        import nvidia_inspector
+        found = nvidia_inspector.find_inspector()
+        if not found:
+            messagebox.showwarning("Not installed",
+                                   "nvidiaProfileInspector.exe not found.")
+            return
+        nvidia_inspector.launch_gui(found)
 
     def _render_cards(self):
         for w in self.scroll_free.winfo_children():
