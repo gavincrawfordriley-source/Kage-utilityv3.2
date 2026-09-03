@@ -61,14 +61,21 @@ class SettingsDialog(ctk.CTkToplevel):
         tabs.add("\U0001F4CB Profiles")
         tabs.add("\U0001F4CA Benchmark")
         tabs.add("\u2699 System")
+        # Customize tab: owner + partner only
+        if licensing.is_owner_session() or licensing.is_partner():
+            tabs.add("\U0001F3A8 Customize")
         if licensing.is_owner_session():
+            tabs.add("\U0001F91D Partnership")
             tabs.add("\U0001F451 Owner")
 
         self._build_themes(tabs.tab("\U0001F3A8 Themes"))
         self._build_profiles(tabs.tab("\U0001F4CB Profiles"))
         self._build_benchmark(tabs.tab("\U0001F4CA Benchmark"))
         self._build_system(tabs.tab("\u2699 System"))
+        if licensing.is_owner_session() or licensing.is_partner():
+            self._build_customize(tabs.tab("\U0001F3A8 Customize"))
         if licensing.is_owner_session():
+            self._build_partnership(tabs.tab("\U0001F91D Partnership"))
             self._build_owner(tabs.tab("\U0001F451 Owner"))
 
     # ---------- Themes ----------
@@ -391,68 +398,118 @@ class SettingsDialog(ctk.CTkToplevel):
 
     # ---------- Owner Console ----------
     def _build_owner(self, parent):
+        # Use a scrollable frame — content is now bigger with owner-code rotation
+        scroll = ctk.CTkScrollableFrame(parent, fg_color=self.theme["BG"], corner_radius=0)
+        scroll.pack(fill="both", expand=True)
+
         ctk.CTkLabel(
-            parent, text="\U0001F451  Owner Console",
+            scroll, text="\U0001F451  Owner Console",
             font=("Rajdhani", 20, "bold"),
             text_color=self.theme["GOLD"],
         ).pack(anchor="w", pady=(8, 4))
         ctk.CTkLabel(
-            parent,
-            text="Rotate the secret code without recompiling. The change persists on this PC only.",
+            scroll,
+            text="Rotate premium AND owner codes at runtime. Rotated codes persist on this PC only.",
             font=("Inter", 11), text_color=self.theme["MUTED"],
             wraplength=640, justify="left",
         ).pack(anchor="w", pady=(0, 20))
 
+        # ===== Premium code section =====
+        ctk.CTkLabel(
+            scroll, text="\u2605  PREMIUM CODE",
+            font=("Rajdhani", 14, "bold"),
+            text_color=self.theme["GOLD"],
+        ).pack(anchor="w", pady=(8, 4))
+
         current = licensing.get_secret_code()
         ctk.CTkLabel(
-            parent, text=f"Current secret code:  {current}",
-            font=("JetBrains Mono", 13),
+            scroll, text=f"Current premium code:  {current}",
+            font=("JetBrains Mono", 12),
             text_color=self.theme["TEXT"],
-        ).pack(anchor="w", pady=(0, 20))
-
-        ctk.CTkLabel(
-            parent, text="New secret code",
-            font=("Rajdhani", 12, "bold"),
-            text_color=self.theme["TEXT"],
-        ).pack(anchor="w")
+        ).pack(anchor="w", pady=(0, 8))
 
         self.new_code_entry = ctk.CTkEntry(
-            parent, width=320, height=38,
-            font=("JetBrains Mono", 14), justify="center",
+            scroll, width=320, height=36,
+            font=("JetBrains Mono", 13), justify="center",
             placeholder_text="e.g. FRAG2026",
             fg_color=self.theme["CARD"], border_color=self.theme["BORDER"],
         )
-        self.new_code_entry.pack(anchor="w", pady=(4, 6))
+        self.new_code_entry.pack(anchor="w", pady=(2, 6))
 
         self.owner_msg = ctk.CTkLabel(
-            parent, text="", font=("Inter", 11),
+            scroll, text="", font=("Inter", 11),
             text_color=self.theme["MUTED"],
         )
-        self.owner_msg.pack(anchor="w", pady=(0, 10))
+        self.owner_msg.pack(anchor="w", pady=(0, 8))
 
-        bar = ctk.CTkFrame(parent, fg_color=self.theme["BG"])
+        bar = ctk.CTkFrame(scroll, fg_color=self.theme["BG"])
         bar.pack(anchor="w")
-
         ctk.CTkButton(
-            bar, text="ROTATE CODE", command=self._rotate,
+            bar, text="ROTATE PREMIUM CODE", command=self._rotate,
             fg_color=self.theme["GOLD"], hover_color="#dbaf3e",
             text_color="#141005",
-            font=("Rajdhani", 13, "bold"), width=140, height=34, corner_radius=8,
+            font=("Rajdhani", 12, "bold"), width=200, height=32, corner_radius=8,
         ).pack(side="left", padx=(0, 8))
-
         ctk.CTkButton(
-            bar, text="RESET TO DEFAULT", command=self._reset,
+            bar, text="RESET DEFAULT", command=self._reset,
             fg_color="#242a33", hover_color="#2f3742",
             text_color=self.theme["TEXT"],
-            font=("Rajdhani", 12, "bold"), width=160, height=34, corner_radius=8,
+            font=("Rajdhani", 11, "bold"), width=140, height=32, corner_radius=8,
         ).pack(side="left")
 
-        # revoke controls
+        # ===== Owner code section =====
         ctk.CTkLabel(
-            parent, text="", height=6,
-        ).pack()
-        revoke_bar = ctk.CTkFrame(parent, fg_color=self.theme["BG"])
-        revoke_bar.pack(anchor="w", pady=(20, 0))
+            scroll, text="\U0001F451  OWNER CODE (Master Key)",
+            font=("Rajdhani", 14, "bold"),
+            text_color=self.theme["GOLD"],
+        ).pack(anchor="w", pady=(24, 4))
+        ctk.CTkLabel(
+            scroll,
+            text="Rotate your master key to hand out owner rights to a trusted mate. "
+                 "Give them the current code, then rotate to something new so only you keep it.",
+            font=("Inter", 11), text_color=self.theme["MUTED"],
+            wraplength=640, justify="left",
+        ).pack(anchor="w", pady=(0, 8))
+
+        current_owner = licensing.get_owner_code()
+        ctk.CTkLabel(
+            scroll, text=f"Current owner code:  {current_owner}",
+            font=("JetBrains Mono", 12),
+            text_color=self.theme["GOLD"],
+        ).pack(anchor="w", pady=(0, 8))
+
+        self.new_owner_entry = ctk.CTkEntry(
+            scroll, width=320, height=36,
+            font=("JetBrains Mono", 13), justify="center",
+            placeholder_text="e.g. shadow-lord-2026",
+            fg_color=self.theme["CARD"], border_color=self.theme["BORDER"],
+        )
+        self.new_owner_entry.pack(anchor="w", pady=(2, 6))
+
+        self.owner_code_msg = ctk.CTkLabel(
+            scroll, text="", font=("Inter", 11),
+            text_color=self.theme["MUTED"],
+        )
+        self.owner_code_msg.pack(anchor="w", pady=(0, 8))
+
+        bar2 = ctk.CTkFrame(scroll, fg_color=self.theme["BG"])
+        bar2.pack(anchor="w")
+        ctk.CTkButton(
+            bar2, text="ROTATE OWNER CODE", command=self._rotate_owner,
+            fg_color=self.theme["GOLD"], hover_color="#dbaf3e",
+            text_color="#141005",
+            font=("Rajdhani", 12, "bold"), width=200, height=32, corner_radius=8,
+        ).pack(side="left", padx=(0, 8))
+        ctk.CTkButton(
+            bar2, text="RESET DEFAULT", command=self._reset_owner,
+            fg_color="#242a33", hover_color="#2f3742",
+            text_color=self.theme["TEXT"],
+            font=("Rajdhani", 11, "bold"), width=140, height=32, corner_radius=8,
+        ).pack(side="left")
+
+        # ===== Revoke section =====
+        revoke_bar = ctk.CTkFrame(scroll, fg_color=self.theme["BG"])
+        revoke_bar.pack(anchor="w", pady=(24, 0))
 
         ctk.CTkLabel(
             revoke_bar, text="Revocation state:",
@@ -477,6 +534,26 @@ class SettingsDialog(ctk.CTkToplevel):
             font=("Rajdhani", 12, "bold"), width=200, height=32, corner_radius=8,
         ).pack(side="left")
 
+    def _rotate_owner(self):
+        new = self.new_owner_entry.get().strip()
+        if licensing.rotate_owner_code(new):
+            self.owner_code_msg.configure(
+                text=f"\u2713 Owner code rotated to '{new}'. Old owner code no longer works.",
+                text_color=self.theme["ACCENT"],
+            )
+        else:
+            self.owner_code_msg.configure(
+                text="\u2717 Invalid code (3\u201340 chars, must not match premium or partner code).",
+                text_color=self.theme["DANGER"],
+            )
+
+    def _reset_owner(self):
+        licensing.reset_owner_code()
+        self.owner_code_msg.configure(
+            text="\u21BA Owner code reset to default (2006james).",
+            text_color=self.theme["MUTED"],
+        )
+
     def _rotate(self):
         new = self.new_code_entry.get().strip()
         if licensing.rotate_secret_code(new):
@@ -498,6 +575,163 @@ class SettingsDialog(ctk.CTkToplevel):
         )
 
     def _toggle_revoke(self):
-        # simulate re-entering owner code
-        licensing.submit_code(licensing.OWNER_CODE)
+        if licensing.is_owner_revoked():
+            licensing.owner_reenable_pc()
+        else:
+            licensing.owner_revoke_pc()
         self.destroy()
+
+    # ---------- Partnership Panel ----------
+    def _build_partnership(self, parent):
+        t = self.theme
+        # Distinct cyan/teal accent for partner branding
+        PARTNER_COLOR = "#2dd4bf"
+
+        ctk.CTkLabel(
+            parent, text="\U0001F91D  Partnership Panel",
+            font=("Rajdhani", 20, "bold"),
+            text_color=PARTNER_COLOR,
+        ).pack(anchor="w", pady=(8, 4))
+        ctk.CTkLabel(
+            parent,
+            text="Generate a rotatable code to grant partners access to the Partner tab "
+                 "and exclusive tweaks. Old codes stop working after a rotation.",
+            font=("Inter", 11), text_color=t["MUTED"],
+            wraplength=640, justify="left",
+        ).pack(anchor="w", pady=(0, 20))
+
+        current = licensing.get_partner_code()
+        ctk.CTkLabel(
+            parent, text=f"Current partner code:  {current}",
+            font=("JetBrains Mono", 13),
+            text_color=PARTNER_COLOR,
+        ).pack(anchor="w", pady=(0, 20))
+
+        ctk.CTkLabel(
+            parent, text="New partner code",
+            font=("Rajdhani", 12, "bold"),
+            text_color=t["TEXT"],
+        ).pack(anchor="w")
+
+        self.new_partner_entry = ctk.CTkEntry(
+            parent, width=320, height=38,
+            font=("JetBrains Mono", 14), justify="center",
+            placeholder_text="e.g. KAGE-ALPHA-2026",
+            fg_color=t["CARD"], border_color=t["BORDER"],
+        )
+        self.new_partner_entry.pack(anchor="w", pady=(4, 6))
+
+        self.partner_msg = ctk.CTkLabel(
+            parent, text="", font=("Inter", 11),
+            text_color=t["MUTED"],
+        )
+        self.partner_msg.pack(anchor="w", pady=(0, 10))
+
+        bar = ctk.CTkFrame(parent, fg_color=t["BG"])
+        bar.pack(anchor="w")
+
+        ctk.CTkButton(
+            bar, text="ROTATE PARTNER CODE", command=self._rotate_partner,
+            fg_color=PARTNER_COLOR, hover_color="#14b8a6", text_color="#053b32",
+            font=("Rajdhani", 13, "bold"), width=200, height=34, corner_radius=8,
+        ).pack(side="left", padx=(0, 8))
+
+        ctk.CTkButton(
+            bar, text="RESET TO DEFAULT", command=self._reset_partner,
+            fg_color="#242a33", hover_color="#2f3742", text_color=t["TEXT"],
+            font=("Rajdhani", 12, "bold"), width=160, height=34, corner_radius=8,
+        ).pack(side="left")
+
+    def _rotate_partner(self):
+        new = self.new_partner_entry.get().strip()
+        if licensing.rotate_partner_code(new):
+            self.partner_msg.configure(
+                text=f"\u2713 Partner code rotated to '{new}'. Give it to your partners.",
+                text_color=self.theme["ACCENT"],
+            )
+        else:
+            self.partner_msg.configure(
+                text="\u2717 Invalid code (3\u201340 chars, must not match owner or premium code).",
+                text_color=self.theme["DANGER"],
+            )
+
+    def _reset_partner(self):
+        licensing.reset_partner_code()
+        self.partner_msg.configure(
+            text="\u21BA Partner code reset to default (KAGE-PARTNER).",
+            text_color=self.theme["MUTED"],
+        )
+
+    # ---------- Customize (background) ----------
+    def _build_customize(self, parent):
+        t = self.theme
+        ctk.CTkLabel(
+            parent, text="\U0001F3A8  Custom Background",
+            font=("Rajdhani", 20, "bold"),
+            text_color=t["ACCENT"],
+        ).pack(anchor="w", pady=(8, 4))
+        ctk.CTkLabel(
+            parent,
+            text="Exclusive to Owner + Partners. Pick any PNG/JPG on your PC — it becomes "
+                 "the app background on next launch.",
+            font=("Inter", 11), text_color=t["MUTED"],
+            wraplength=640, justify="left",
+        ).pack(anchor="w", pady=(0, 20))
+
+        current = licensing.get_custom_bg_path() or "(default Kage background)"
+        self.bg_current_label = ctk.CTkLabel(
+            parent, text=f"Current:  {current}",
+            font=("JetBrains Mono", 11),
+            text_color=t["MUTED"], wraplength=640, justify="left",
+        )
+        self.bg_current_label.pack(anchor="w", pady=(0, 16))
+
+        bar = ctk.CTkFrame(parent, fg_color=t["BG"])
+        bar.pack(anchor="w")
+
+        ctk.CTkButton(
+            bar, text="\U0001F5BC   BROWSE IMAGE...", command=self._pick_bg,
+            fg_color=t["ACCENT"], hover_color=t["ACCENT_DIM"], text_color="#0a0f0a",
+            font=("Rajdhani", 13, "bold"), width=200, height=36, corner_radius=8,
+        ).pack(side="left", padx=(0, 8))
+
+        ctk.CTkButton(
+            bar, text="RESET TO DEFAULT", command=self._reset_bg,
+            fg_color="#242a33", hover_color="#2f3742", text_color=t["TEXT"],
+            font=("Rajdhani", 12, "bold"), width=160, height=36, corner_radius=8,
+        ).pack(side="left")
+
+        ctk.CTkLabel(
+            parent,
+            text="\u2139  Restart the app after changing to see the new background.",
+            font=("Inter", 10), text_color=t["MUTED"],
+        ).pack(anchor="w", pady=(16, 0))
+
+    def _pick_bg(self):
+        from tkinter import filedialog
+        path = filedialog.askopenfilename(
+            parent=self,
+            title="Choose your background image",
+            filetypes=[
+                ("Image files", "*.png *.jpg *.jpeg *.webp *.bmp"),
+                ("All files", "*.*"),
+            ],
+        )
+        if not path:
+            return
+        if licensing.set_custom_bg_path(path):
+            self.bg_current_label.configure(
+                text=f"Current:  {path}",
+                text_color=self.theme["ACCENT"],
+            )
+            messagebox.showinfo(
+                "Background updated",
+                "New background saved. Restart Kage Utility to see it.",
+            )
+
+    def _reset_bg(self):
+        licensing.reset_custom_bg()
+        self.bg_current_label.configure(
+            text="Current:  (default Kage background)",
+            text_color=self.theme["MUTED"],
+        )

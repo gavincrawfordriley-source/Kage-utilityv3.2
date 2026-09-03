@@ -18,6 +18,7 @@ else:
 from optimizations import TWEAKS, CATEGORIES, is_admin
 from licensing import (
     submit_code, is_unlocked, is_owner_revoked, is_owner_session,
+    is_partner, is_owner, get_custom_bg_path,
 )
 from settings_ui import SettingsDialog, get_theme
 import history
@@ -211,11 +212,16 @@ class UnlockDialog(ctk.CTkToplevel):
     def _submit(self):
         level, message = submit_code(self.entry.get())
         t = self.theme
-        color = t["ACCENT"] if level in ("unlock", "owner_unlock", "already") else (
-            t["GOLD"] if level == "owner_revoke" else t["DANGER"]
-        )
+        if level in ("unlock", "already"):
+            color = t["ACCENT"]
+        elif level == "owner_unlock":
+            color = t["GOLD"]
+        elif level == "partner_unlock":
+            color = "#2dd4bf"
+        else:
+            color = t["DANGER"]
         self.msg.configure(text=message, text_color=color)
-        if level in ("unlock", "owner_unlock", "owner_revoke"):
+        if level in ("unlock", "owner_unlock", "partner_unlock"):
             self.after(1100, lambda: (self.on_result(), self.destroy()))
 
 
@@ -244,13 +250,21 @@ class App(ctk.CTk):
             self.attributes("-alpha", 1.0)
         except Exception:
             pass
-        # background image
+        # background image (custom > packaged default)
         self._bg_img = None
         try:
             from PIL import Image
-            bg_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "bg.png")
-            if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
-                bg_path = os.path.join(sys._MEIPASS, "bg.png")
+            # 1) Custom user-supplied background (owner/partner only)
+            bg_path = None
+            if is_owner() or is_partner():
+                cust = get_custom_bg_path()
+                if cust and os.path.exists(cust):
+                    bg_path = cust
+            # 2) Fallback to packaged default
+            if not bg_path:
+                bg_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "bg.png")
+                if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+                    bg_path = os.path.join(sys._MEIPASS, "bg.png")
             if os.path.exists(bg_path):
                 pil = Image.open(bg_path)
                 self._bg_img = ctk.CTkImage(light_image=pil, dark_image=pil,
@@ -317,6 +331,16 @@ class App(ctk.CTk):
                 width=100, height=26,
             )
         self.premium_badge.pack(side="right", padx=(4, 0))
+
+        # Partner badge (cyan/teal) — shown to partners + owners
+        if is_partner():
+            self.partner_badge = ctk.CTkLabel(
+                badges, text="\U0001F91D PARTNER",
+                font=("Rajdhani", 12, "bold"),
+                text_color="#2dd4bf", fg_color="#0d2a26", corner_radius=8,
+                width=100, height=26,
+            )
+            self.partner_badge.pack(side="right", padx=(4, 0))
 
         admin_txt = "\u2713 ADMIN" if is_admin() else "\u26A0 NO ADMIN"
         admin_color = t["ACCENT"] if is_admin() else t["DANGER"]
@@ -469,13 +493,19 @@ class App(ctk.CTk):
 
         # Add tabs with clear labels
         free_count = sum(1 for tw in TWEAKS if not tw["locked"])
-        prem_count = sum(1 for tw in TWEAKS if tw["locked"])
+        prem_count = sum(1 for tw in TWEAKS if tw["locked"] and not tw.get("partner_only"))
+        part_count = sum(1 for tw in TWEAKS if tw.get("partner_only"))
         free_tab_name = f"\u26A1  FREE  ({free_count})"
         prem_tab_name = f"\u2605  PREMIUM  ({prem_count})"
+        part_tab_name = f"\U0001F91D  PARTNER  ({part_count})"
         self.tabview.add(free_tab_name)
         self.tabview.add(prem_tab_name)
+        # Partner tab only if this PC has partner or owner
+        if is_partner():
+            self.tabview.add(part_tab_name)
         self._free_tab_name = free_tab_name
         self._prem_tab_name = prem_tab_name
+        self._part_tab_name = part_tab_name
 
         # Scrollable frames inside each tab
         self.scroll_free = ctk.CTkScrollableFrame(
@@ -487,6 +517,13 @@ class App(ctk.CTk):
             self.tabview.tab(prem_tab_name), fg_color=t["BG"], corner_radius=0
         )
         self.scroll_prem.pack(fill="both", expand=True)
+
+        self.scroll_part = None
+        if is_partner():
+            self.scroll_part = ctk.CTkScrollableFrame(
+                self.tabview.tab(part_tab_name), fg_color=t["BG"], corner_radius=0
+            )
+            self.scroll_part.pack(fill="both", expand=True)
 
         self._render_cards()
 
@@ -501,34 +538,51 @@ class App(ctk.CTk):
             w.destroy()
         for w in self.scroll_prem.winfo_children():
             w.destroy()
+        if self.scroll_part is not None:
+            for w in self.scroll_part.winfo_children():
+                w.destroy()
         self.cards = []
         unlocked = self._unlocked()
         t = self.theme
 
-        # Split tweaks by category, then into free/premium buckets
+        # Bucket tweaks into free / premium / partner by tier
         free_by_cat = {}
         prem_by_cat = {}
+        part_by_cat = {}
         for tw in TWEAKS:
-            bucket = prem_by_cat if tw["locked"] else free_by_cat
-            bucket.setdefault(tw["category"], []).append(tw)
+            if tw.get("partner_only"):
+                part_by_cat.setdefault(tw["category"], []).append(tw)
+            elif tw["locked"]:
+                prem_by_cat.setdefault(tw["category"], []).append(tw)
+            else:
+                free_by_cat.setdefault(tw["category"], []).append(tw)
 
-        def render_bucket(parent, by_cat, is_premium):
+        def render_bucket(parent, by_cat, tier):
+            """tier ∈ {'free', 'premium', 'partner'}"""
             for cat in CATEGORIES:
                 items = by_cat.get(cat, [])
                 if not items:
                     continue
 
+                if tier == "partner":
+                    header_color = "#2dd4bf"  # cyan
+                    marker = "  \U0001F91D"
+                elif tier == "premium":
+                    header_color = t["GOLD"]
+                    marker = "  \U0001F512" if not unlocked else "  \u2605"
+                else:
+                    header_color = t["ACCENT"]
+                    marker = ""
+
                 header = ctk.CTkFrame(parent, fg_color=t["BG"], height=36)
                 header.pack(fill="x", pady=(14, 4), padx=6)
-                cat_locked = is_premium and not unlocked
-                cat_color = t["GOLD"] if is_premium else t["ACCENT"]
                 icon = CATEGORY_ICONS.get(cat, "\u25CF")
-                lock_marker = "  \U0001F512" if cat_locked else ("  \u2605" if is_premium else "")
                 ctk.CTkLabel(
                     header,
-                    text=f"{icon}   {cat.upper()}{lock_marker}",
+                    text=f"{icon}   {cat.upper()}{marker}",
                     font=("Rajdhani", 15, "bold"),
-                    text_color=cat_color if not cat_locked else t["MUTED_LOCKED"],
+                    text_color=header_color if (tier == "free" or unlocked or tier == "partner")
+                                          else t["MUTED_LOCKED"],
                     anchor="w",
                 ).pack(side="left")
 
@@ -544,11 +598,10 @@ class App(ctk.CTk):
                     self.cards.append(card)
 
         # Free tab: only free tweaks
-        render_bucket(self.scroll_free, free_by_cat, is_premium=False)
+        render_bucket(self.scroll_free, free_by_cat, "free")
 
-        # Premium tab: only premium tweaks (with locked/unlocked visuals)
+        # Premium tab: premium tweaks with locked/unlocked visuals
         if not unlocked:
-            # Show a helpful banner at top of premium tab
             banner = ctk.CTkFrame(self.scroll_prem, fg_color="#211a08",
                                   corner_radius=10, border_width=1,
                                   border_color=t["GOLD"])
@@ -566,7 +619,28 @@ class App(ctk.CTk):
                 font=("Inter", 11),
                 text_color=t["MUTED"], anchor="w", justify="left",
             ).pack(fill="x", padx=14, pady=(2, 12))
-        render_bucket(self.scroll_prem, prem_by_cat, is_premium=True)
+        render_bucket(self.scroll_prem, prem_by_cat, "premium")
+
+        # Partner tab (visible only if partner)
+        if self.scroll_part is not None:
+            banner = ctk.CTkFrame(self.scroll_part, fg_color="#0d2a26",
+                                  corner_radius=10, border_width=1,
+                                  border_color="#2dd4bf")
+            banner.pack(fill="x", padx=6, pady=(6, 10))
+            ctk.CTkLabel(
+                banner,
+                text="\U0001F91D  PARTNER EXCLUSIVE",
+                font=("Rajdhani", 16, "bold"),
+                text_color="#2dd4bf", anchor="w",
+            ).pack(fill="x", padx=14, pady=(10, 0))
+            ctk.CTkLabel(
+                banner,
+                text="Hand-picked hardcore tweaks reserved for partners. "
+                     "Use Settings \u2192 Customize to change the app background.",
+                font=("Inter", 11),
+                text_color=t["MUTED"], anchor="w", justify="left",
+            ).pack(fill="x", padx=14, pady=(2, 12))
+            render_bucket(self.scroll_part, part_by_cat, "partner")
 
     def _on_close(self):
         """Hide to tray if available, otherwise quit."""

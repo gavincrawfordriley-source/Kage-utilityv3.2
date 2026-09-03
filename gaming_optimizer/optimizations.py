@@ -428,21 +428,24 @@ def _hpgpu_status():
 # ============================================================
 LOCKED = True
 FREE = False
+PARTNER = "partner"  # partner-exclusive tier
 
 _defs = []
 
 
-def _add(tid, title, desc, icon, category, locked, apply, restore, status, admin=True):
+def _add(tid, title, desc, icon, category, locked, apply, restore, status, admin=True, partner_only=False):
     _defs.append({
         "id": tid, "title": title, "desc": desc, "icon": icon,
         "category": category, "locked": locked, "requires_admin": admin,
+        "partner_only": partner_only,
+        "tier": "partner" if partner_only else ("premium" if locked else "free"),
         "apply": apply, "restore": restore, "status": status,
     })
 
 
-def _add_reg(tid, title, desc, icon, category, locked, ops, admin=True):
+def _add_reg(tid, title, desc, icon, category, locked, ops, admin=True, partner_only=False):
     a, r, s = _reg_tweak(tid, ops)
-    _add(tid, title, desc, icon, category, locked, a, r, s, admin)
+    _add(tid, title, desc, icon, category, locked, a, r, s, admin, partner_only)
 
 
 # ---------- CPU & POWER (LOCKED) ----------
@@ -754,6 +757,50 @@ _add_reg("audio_dpc", "Higher Priority for Audio DPC",
       {"hive": "HKLM", "path": r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile\Tasks\Audio", "name": "Scheduling Category", "on": "High", "typ": winreg.REG_SZ if winreg else None}])
 
 
+# ============================================================
+# PARTNER EXCLUSIVE — only available via the partner code
+# ============================================================
+_add_reg("partner_mmcss_games", "Max MMCSS Games Priority",
+     "Elevates the Games task in Multimedia Class Scheduler above every other multimedia task.",
+     "\U0001F3C6", "Partner Exclusive", LOCKED,
+     [{"hive": "HKLM", "path": r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile\Tasks\Games", "name": "Priority", "on": 6},
+      {"hive": "HKLM", "path": r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile\Tasks\Games", "name": "Scheduling Category", "on": "High", "typ": winreg.REG_SZ if winreg else None},
+      {"hive": "HKLM", "path": r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile\Tasks\Games", "name": "SFIO Priority", "on": "High", "typ": winreg.REG_SZ if winreg else None},
+      {"hive": "HKLM", "path": r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile\Tasks\Games", "name": "GPU Priority", "on": 8},
+      {"hive": "HKLM", "path": r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile\Tasks\Games", "name": "Background Only", "on": "False", "typ": winreg.REG_SZ if winreg else None}],
+     partner_only=True)
+
+_add_reg("partner_tcp_ack", "Zero TCP ACK Frequency",
+     "Aggressive TCP ACK batching disabled — every packet acknowledged instantly.",
+     "\U0001F4E6", "Partner Exclusive", LOCKED,
+     [{"hive": "HKLM", "path": r"SYSTEM\CurrentControlSet\Services\Tcpip\Parameters", "name": "TcpAckFrequency", "on": 1},
+      {"hive": "HKLM", "path": r"SYSTEM\CurrentControlSet\Services\Tcpip\Parameters", "name": "TCPNoDelay", "on": 1},
+      {"hive": "HKLM", "path": r"SYSTEM\CurrentControlSet\Services\Tcpip\Parameters", "name": "TcpDelAckTicks", "on": 0}],
+     partner_only=True)
+
+_add_reg("partner_hwsch_gpu", "Force GPU Hardware Scheduling",
+     "Enables Windows Hardware-accelerated GPU Scheduling at the driver level.",
+     "\U0001F3AE", "Partner Exclusive", LOCKED,
+     [{"hive": "HKLM", "path": r"SYSTEM\CurrentControlSet\Control\GraphicsDrivers", "name": "HwSchMode", "on": 2},
+      {"hive": "HKLM", "path": r"SYSTEM\CurrentControlSet\Control\GraphicsDrivers", "name": "TdrLevel", "on": 3}],
+     partner_only=True)
+
+_add_reg("partner_input_lag", "Nuke Input Latency Timers",
+     "Removes every mouse/keyboard input smoothing delay Windows adds by default.",
+     "\U0001F5B1", "Partner Exclusive", LOCKED,
+     [{"hive": "HKCU", "path": r"Control Panel\Mouse", "name": "MouseHoverTime", "on": "1", "typ": winreg.REG_SZ if winreg else None},
+      {"hive": "HKCU", "path": r"Control Panel\Desktop", "name": "MenuShowDelay", "on": "0", "typ": winreg.REG_SZ if winreg else None},
+      {"hive": "HKCU", "path": r"Control Panel\Keyboard", "name": "KeyboardDelay", "on": "0", "typ": winreg.REG_SZ if winreg else None}],
+     admin=False, partner_only=True)
+
+_add_reg("partner_win_prio", "Foreground Boost x6",
+     "Massively boosts CPU quantum priority for the currently focused window (your game).",
+     "\U0001F525", "Partner Exclusive", LOCKED,
+     [{"hive": "HKLM", "path": r"SYSTEM\CurrentControlSet\Control\PriorityControl", "name": "Win32PrioritySeparation", "on": 0x26}],
+     partner_only=True)
+
+
 TWEAKS = _defs
 CATEGORIES = ["CPU & Power", "Network", "GPU / DirectX", "Input", "System",
-              "Gaming", "Visuals", "Startup", "Disk", "Privacy", "Audio"]
+              "Gaming", "Visuals", "Startup", "Disk", "Privacy", "Audio",
+              "Partner Exclusive"]
