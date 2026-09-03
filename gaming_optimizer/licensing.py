@@ -88,7 +88,10 @@ def submit_code(code: str) -> tuple[str, str]:
     if not code:
         return "bad", "Please enter a code."
 
-    if code == OWNER_CODE:
+    # case-insensitive comparison so users can type FRAG42, frag42, Frag42
+    code_norm = code.lower()
+
+    if code_norm == OWNER_CODE.lower():
         _OWNER_SESSION["active"] = True
         d = _load(LICENSE_FILE)
         if d.get("revoked_by_owner"):
@@ -102,7 +105,7 @@ def submit_code(code: str) -> tuple[str, str]:
             _save(LICENSE_FILE, d)
             return "owner_revoke", "\U0001F451  Owner override: premium access REVOKED on this PC."
 
-    if code == get_secret_code():
+    if code_norm == get_secret_code().lower():
         d = _load(LICENSE_FILE)
         if d.get("revoked_by_owner"):
             return "bad", "\u274C This PC has been revoked by the owner."

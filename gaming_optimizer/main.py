@@ -239,9 +239,9 @@ class App(ctk.CTk):
         self.geometry("980x840")
         self.minsize(880, 700)
         self.configure(fg_color=self.theme["BG"])
-        # subtle gaming-feel transparency (Windows)
+        # fully opaque window (no see-through)
         try:
-            self.attributes("-alpha", 0.97)
+            self.attributes("-alpha", 1.0)
         except Exception:
             pass
         # background image
@@ -397,9 +397,40 @@ class App(ctk.CTk):
                 font=("Rajdhani", 13, "bold"), height=40, corner_radius=10, width=160,
             ).pack(side="right")
 
-        # ---------- Scroll body ----------
-        self.scroll = ctk.CTkScrollableFrame(self, fg_color=t["BG"], corner_radius=0)
-        self.scroll.pack(fill="both", expand=True, padx=22, pady=(2, 4))
+        # ---------- Tabs: Free / Premium ----------
+        self.tabview = ctk.CTkTabview(
+            self,
+            fg_color=t["BG"],
+            segmented_button_fg_color="#161a1f",
+            segmented_button_selected_color=t["ACCENT"],
+            segmented_button_selected_hover_color=t["ACCENT_DIM"],
+            segmented_button_unselected_color="#242a33",
+            segmented_button_unselected_hover_color="#2f3742",
+            text_color=t["TEXT"],
+            corner_radius=10,
+        )
+        self.tabview.pack(fill="both", expand=True, padx=22, pady=(2, 4))
+
+        # Add tabs with clear labels
+        free_count = sum(1 for tw in TWEAKS if not tw["locked"])
+        prem_count = sum(1 for tw in TWEAKS if tw["locked"])
+        free_tab_name = f"\u26A1  FREE  ({free_count})"
+        prem_tab_name = f"\u2605  PREMIUM  ({prem_count})"
+        self.tabview.add(free_tab_name)
+        self.tabview.add(prem_tab_name)
+        self._free_tab_name = free_tab_name
+        self._prem_tab_name = prem_tab_name
+
+        # Scrollable frames inside each tab
+        self.scroll_free = ctk.CTkScrollableFrame(
+            self.tabview.tab(free_tab_name), fg_color=t["BG"], corner_radius=0
+        )
+        self.scroll_free.pack(fill="both", expand=True)
+
+        self.scroll_prem = ctk.CTkScrollableFrame(
+            self.tabview.tab(prem_tab_name), fg_color=t["BG"], corner_radius=0
+        )
+        self.scroll_prem.pack(fill="both", expand=True)
 
         self._render_cards()
 
@@ -410,45 +441,76 @@ class App(ctk.CTk):
         self.status_bar.pack(fill="x", padx=32, pady=(0, 12))
 
     def _render_cards(self):
-        for w in self.scroll.winfo_children():
+        for w in self.scroll_free.winfo_children():
+            w.destroy()
+        for w in self.scroll_prem.winfo_children():
             w.destroy()
         self.cards = []
         unlocked = self._unlocked()
         t = self.theme
 
-        by_cat = {}
+        # Split tweaks by category, then into free/premium buckets
+        free_by_cat = {}
+        prem_by_cat = {}
         for tw in TWEAKS:
-            by_cat.setdefault(tw["category"], []).append(tw)
+            bucket = prem_by_cat if tw["locked"] else free_by_cat
+            bucket.setdefault(tw["category"], []).append(tw)
 
-        for cat in CATEGORIES:
-            items = by_cat.get(cat, [])
-            if not items:
-                continue
+        def render_bucket(parent, by_cat, is_premium):
+            for cat in CATEGORIES:
+                items = by_cat.get(cat, [])
+                if not items:
+                    continue
 
-            header = ctk.CTkFrame(self.scroll, fg_color=t["BG"], height=36)
-            header.pack(fill="x", pady=(14, 4), padx=6)
-            cat_locked = items[0]["locked"] and not unlocked
-            cat_color = t["GOLD"] if items[0]["locked"] else t["ACCENT"]
-            icon = CATEGORY_ICONS.get(cat, "\u25CF")
-            lock_marker = "  \U0001F512" if cat_locked else ("  \u2605" if items[0]["locked"] else "")
+                header = ctk.CTkFrame(parent, fg_color=t["BG"], height=36)
+                header.pack(fill="x", pady=(14, 4), padx=6)
+                cat_locked = is_premium and not unlocked
+                cat_color = t["GOLD"] if is_premium else t["ACCENT"]
+                icon = CATEGORY_ICONS.get(cat, "\u25CF")
+                lock_marker = "  \U0001F512" if cat_locked else ("  \u2605" if is_premium else "")
+                ctk.CTkLabel(
+                    header,
+                    text=f"{icon}   {cat.upper()}{lock_marker}",
+                    font=("Rajdhani", 15, "bold"),
+                    text_color=cat_color if not cat_locked else t["MUTED_LOCKED"],
+                    anchor="w",
+                ).pack(side="left")
+
+                ctk.CTkLabel(
+                    header, text=f"{len(items)} tweaks",
+                    font=("Inter", 10),
+                    text_color=t["MUTED"], anchor="e",
+                ).pack(side="right", padx=(0, 4))
+
+                for tw in items:
+                    card = TweakCard(parent, tw, self.on_toggle, unlocked, t)
+                    card.pack(fill="x", padx=6, pady=4)
+                    self.cards.append(card)
+
+        # Free tab: only free tweaks
+        render_bucket(self.scroll_free, free_by_cat, is_premium=False)
+
+        # Premium tab: only premium tweaks (with locked/unlocked visuals)
+        if not unlocked:
+            # Show a helpful banner at top of premium tab
+            banner = ctk.CTkFrame(self.scroll_prem, fg_color="#211a08",
+                                  corner_radius=10, border_width=1,
+                                  border_color=t["GOLD"])
+            banner.pack(fill="x", padx=6, pady=(6, 10))
             ctk.CTkLabel(
-                header,
-                text=f"{icon}   {cat.upper()}{lock_marker}",
-                font=("Rajdhani", 15, "bold"),
-                text_color=cat_color if not cat_locked else t["MUTED_LOCKED"],
-                anchor="w",
-            ).pack(side="left")
-
+                banner,
+                text="\U0001F512  PREMIUM LOCKED",
+                font=("Rajdhani", 16, "bold"),
+                text_color=t["GOLD"], anchor="w",
+            ).pack(fill="x", padx=14, pady=(10, 0))
             ctk.CTkLabel(
-                header, text=f"{len(items)} tweaks",
-                font=("Inter", 10),
-                text_color=t["MUTED"], anchor="e",
-            ).pack(side="right", padx=(0, 4))
-
-            for tw in items:
-                card = TweakCard(self.scroll, tw, self.on_toggle, unlocked, t)
-                card.pack(fill="x", padx=6, pady=4)
-                self.cards.append(card)
+                banner,
+                text="Enter your unlock code to activate these tweaks. "
+                     "Click 'ENTER CODE' up top.",
+                font=("Inter", 11),
+                text_color=t["MUTED"], anchor="w", justify="left",
+            ).pack(fill="x", padx=14, pady=(2, 12))
+        render_bucket(self.scroll_prem, prem_by_cat, is_premium=True)
 
     def _on_close(self):
         """Hide to tray if available, otherwise quit."""
