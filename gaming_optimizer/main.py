@@ -67,7 +67,7 @@ def relaunch_as_admin():
 # Tweak card
 # ============================================================
 class TweakCard(ctk.CTkFrame):
-    def __init__(self, master, tweak, on_change, unlocked, theme):
+    def __init__(self, master, tweak, on_change, unlocked, theme, transparent_bg=False):
         self.tweak = tweak
         self.on_change = on_change
         self.unlocked = unlocked
@@ -75,9 +75,14 @@ class TweakCard(ctk.CTkFrame):
         locked_visual = tweak["locked"] and not unlocked
         self.locked_visual = locked_visual
 
+        if transparent_bg:
+            card_bg = "transparent"
+        else:
+            card_bg = theme["CARD_LOCKED"] if locked_visual else theme["CARD"]
+
         super().__init__(
             master,
-            fg_color=theme["CARD_LOCKED"] if locked_visual else theme["CARD"],
+            fg_color=card_bg,
             corner_radius=12,
             border_width=1,
             border_color=theme["BORDER"],
@@ -335,6 +340,7 @@ class App(ctk.CTk):
             pass
         # background image (custom > packaged default)
         self._bg_img = None
+        self._has_custom_bg = False
         try:
             from PIL import Image
             # 1) Custom user-supplied background (owner/partner only)
@@ -343,13 +349,18 @@ class App(ctk.CTk):
                 cust = get_custom_bg_path()
                 if cust and os.path.exists(cust):
                     bg_path = cust
+                    self._has_custom_bg = True
             # 2) Fallback to packaged default
             if not bg_path:
                 bg_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "bg.png")
                 if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
                     bg_path = os.path.join(sys._MEIPASS, "bg.png")
             if os.path.exists(bg_path):
-                pil = Image.open(bg_path).convert("RGB")
+                pil = Image.open(bg_path).convert("RGBA")
+                # Darken the image slightly for text readability behind see-through cards
+                darken_alpha = 130 if self._has_custom_bg else 90
+                overlay = Image.new("RGBA", pil.size, (0, 0, 0, darken_alpha))
+                pil = Image.alpha_composite(pil, overlay).convert("RGB")
                 # Cover common screen sizes with high-quality upscale
                 self._bg_img = ctk.CTkImage(light_image=pil, dark_image=pil,
                                             size=(2560, 1600))
@@ -387,7 +398,7 @@ class App(ctk.CTk):
                      text_color=t["ACCENT"]).grid(row=0, column=0, rowspan=2,
                                                   padx=(0, 12), sticky="w")
 
-        ctk.CTkLabel(header, text="P+S",
+        ctk.CTkLabel(header, text="PS",
                      font=("Rajdhani", 32, "bold"),
                      text_color=t["TEXT"], anchor="w").grid(row=0, column=1, sticky="sw")
 
@@ -538,7 +549,8 @@ class App(ctk.CTk):
             ).pack(side="right")
 
         # ---------- Info banner: how to verify tweaks ----------
-        info = ctk.CTkFrame(self, fg_color="#0f1a24",
+        info_bg = "transparent" if self._has_custom_bg else "#0f1a24"
+        info = ctk.CTkFrame(self, fg_color=info_bg,
                             corner_radius=10, border_width=1,
                             border_color=t["ACCENT_DIM"])
         info.pack(fill="x", padx=16, pady=(2, 4))
@@ -642,7 +654,8 @@ class App(ctk.CTk):
         self._home_labels = {}
 
         def make_stat_card(col, key, title, unit_suffix, ring_color):
-            card = ctk.CTkFrame(wrap, fg_color=t["CARD"], corner_radius=14,
+            card_bg = "transparent" if self._has_custom_bg else t["CARD"]
+            card = ctk.CTkFrame(wrap, fg_color=card_bg, corner_radius=14,
                                 border_width=1, border_color=t["BORDER"])
             card.grid(row=0, column=col, padx=6, pady=6, sticky="nsew")
 
@@ -673,7 +686,8 @@ class App(ctk.CTk):
         make_stat_card(2, "ram", "\U0001F4BE  RAM USAGE", "\u2014",  t["GOLD"])
 
         # Temperature Row
-        temp_row = ctk.CTkFrame(wrap, fg_color=t["CARD"], corner_radius=14,
+        temp_bg = "transparent" if self._has_custom_bg else t["CARD"]
+        temp_row = ctk.CTkFrame(wrap, fg_color=temp_bg, corner_radius=14,
                                 border_width=1, border_color=t["BORDER"])
         temp_row.grid(row=1, column=0, columnspan=3, padx=6, pady=(4, 8), sticky="ew")
         temp_row.grid_columnconfigure((0, 1), weight=1)
@@ -890,7 +904,8 @@ class App(ctk.CTk):
                 ).pack(side="right", padx=(0, 4))
 
                 for tw in items:
-                    card = TweakCard(parent, tw, self.on_toggle, unlocked, t)
+                    card = TweakCard(parent, tw, self.on_toggle, unlocked, t,
+                                     transparent_bg=self._has_custom_bg)
                     card.pack(fill="x", padx=6, pady=4)
                     self.cards.append(card)
 
